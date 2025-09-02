@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Nuxt module for sending emails with Lettermint",
   "author": "Bjorn Antonissen",
-  "repository": "https://github.com/lettermint/nuxt-lettermint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lettermint/nuxt-lettermint.git"
+  },
   "bugs": {
     "url": "https://github.com/lettermint/nuxt-lettermint/issues"
   },
@@ -17,7 +20,7 @@
     "mail",
     "smtp",
     "transactional-email"
-],
+  ],
   "type": "module",
   "exports": {
     ".": {
