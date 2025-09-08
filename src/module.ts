@@ -3,6 +3,7 @@ import { defu } from 'defu'
 
 export interface ModuleOptions {
   apiKey?: string
+  autoEndpoint?: boolean
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -13,7 +14,9 @@ export default defineNuxtModule<ModuleOptions>({
       nuxt: '>=3.0.0',
     },
   },
-  defaults: {},
+  defaults: {
+    autoEndpoint: true,
+  },
   setup: function (options, nuxt) {
     const resolver = createResolver(import.meta.url)
 
@@ -28,10 +31,12 @@ export default defineNuxtModule<ModuleOptions>({
 
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
 
-    addServerHandler({
-      route: '/api/lettermint/send',
-      handler: resolver.resolve('./runtime/server/api/lettermint/send.post'),
-    })
+    if (options.autoEndpoint !== false) {
+      addServerHandler({
+        route: '/api/lettermint/send',
+        handler: resolver.resolve('./runtime/server/api/lettermint/send.post'),
+      })
+    }
 
     addImportsDir(resolver.resolve('./runtime/composables'))
 

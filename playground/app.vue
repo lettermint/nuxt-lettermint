@@ -26,7 +26,7 @@
             id="to"
             v-model="emailForm.to"
             type="email"
-            placeholder="recipient@example.com"
+            placeholder="ok@testing.lettermint.co"
             required
           >
         </div>
