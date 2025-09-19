@@ -6,6 +6,7 @@
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
 [![License][license-src]][license-href]
 [![Nuxt][nuxt-src]][nuxt-href]
+[![Join our Discord server](https://img.shields.io/discord/1305510095588819035?logo=discord&logoColor=eee&label=Discord&labelColor=464ce5&color=0D0E28&cacheSeconds=43200)](https://lettermint.co/r/discord)
 
 A Nuxt module for sending emails using the [Lettermint](https://lettermint.co) email service. This module provides a seamless integration with Lettermint's Node.js SDK for both server-side and client-side email sending capabilities.
 
