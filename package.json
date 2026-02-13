@@ -1,6 +1,6 @@
 {
   "name": "nuxt-lettermint",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Nuxt module for sending emails with Lettermint",
   "author": "Bjorn Antonissen",
   "repository": {
@@ -60,13 +60,13 @@
     "@nuxt/eslint-config": "^1.12.1",
     "@nuxt/module-builder": "^1.0.2",
     "@nuxt/schema": "^4.2.2",
-    "@nuxt/test-utils": "^3.21.0",
+    "@nuxt/test-utils": "^4.0.0",
     "@types/node": "^25.0.0",
     "changelogen": "^0.6.2",
     "eslint": "^9.39.2",
     "nuxt": "^4.2.2",
     "typescript": "~5.9.3",
-    "vitest": "^3.2.4",
+    "vitest": "^4.0.0",
     "vue-tsc": "^3.2.1"
   }
 }
