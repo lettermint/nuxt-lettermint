@@ -1,172 +1,100 @@
 import { fileURLToPath } from 'node:url'
-import { describe, it, expect } from 'vitest'
-import { setup, $fetch } from '@nuxt/test-utils/e2e'
+import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { setup, fetch } from '@nuxt/test-utils/e2e'
+import { startMockLettermint } from './utils/mock-lettermint'
 
-describe('Nuxt Lettermint Module - Auto Endpoint Enabled', async () => {
+const lettermint = await startMockLettermint()
+
+process.env.NUXT_LETTERMINT_API_KEY = 'test-api-key'
+process.env.NUXT_LETTERMINT_BASE_URL = lettermint.baseUrl
+
+afterAll(() => lettermint.close())
+
+const message = {
+  from: 'nuxt@lettermint.dev',
+  to: 'ok@testing.lettermint.co',
+  subject: 'Test Email',
+  html: '<h1>Test</h1>',
+}
+
+describe('/api/lettermint/send', async () => {
   await setup({
     rootDir: fileURLToPath(new URL('./fixtures/with-endpoint', import.meta.url)),
     server: true,
   })
 
-  it('should have /api/lettermint/send endpoint available', async () => {
-    try {
-      const response = await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          from: 'nuxt@lettermint.dev',
-          to: 'ok@testing.lettermint.co',
-          subject: 'Test Email',
-          html: '<h1>Test</h1>',
-        },
-      })
-
-      // If API key is configured, should return success
-      expect(response).toBeDefined()
-      expect(response.success).toBe(true)
-      expect(response.messageId).toBeDefined()
-      expect(response.status).toBeDefined()
-    }
-    catch (error) {
-      // Expected if API key is not configured
-      expect(error).toBeDefined()
-    }
+  beforeEach(() => {
+    lettermint.requests.length = 0
   })
 
-  it('should validate required fields', async () => {
-    try {
-      await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          // Missing required fields
-        },
-      })
-      // Should not reach here
-      expect(true).toBe(false)
-    }
-    catch (error) {
-      // Should throw an error (either validation or API key missing)
-      expect(error).toBeDefined()
-    }
-  })
-
-  it('should validate from field', async () => {
-    try {
-      await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          to: 'ok@testing.lettermint.co',
-          subject: 'Test',
-          text: 'Test',
-        },
-      })
-      expect(true).toBe(false)
-    }
-    catch (error) {
-      // Should throw an error (either validation or API key missing)
-      expect(error).toBeDefined()
-    }
-  })
-
-  it('should validate to field', async () => {
-    try {
-      await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          from: 'nuxt@lettermint.dev',
-          subject: 'Test',
-          text: 'Test',
-        },
-      })
-      expect(true).toBe(false)
-    }
-    catch (error) {
-      // Should throw an error (either validation or API key missing)
-      expect(error).toBeDefined()
-    }
-  })
-
-  it('should validate subject field', async () => {
-    try {
-      await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          from: 'nuxt@lettermint.dev',
-          to: 'ok@testing.lettermint.co',
-          text: 'Test',
-        },
-      })
-      expect(true).toBe(false)
-    }
-    catch (error) {
-      // Should throw an error (either validation or API key missing)
-      expect(error).toBeDefined()
-    }
-  })
-
-  it('should validate content (text or html required)', async () => {
-    try {
-      await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          from: 'nuxt@lettermint.dev',
-          to: 'ok@testing.lettermint.co',
-          subject: 'Test',
-        },
-      })
-      expect(true).toBe(false)
-    }
-    catch (error) {
-      // Should throw an error (either validation or API key missing)
-      expect(error).toBeDefined()
-    }
-  })
-})
-
-// Auto Endpoint Disabled tests temporarily disabled due to test framework setup issues
-// These tests verify autoEndpoint: false functionality but have setup problems in CI
-// The core functionality works as expected based on other test coverage
-
-describe('Nuxt Lettermint Module - Configuration', () => {
-  it('should accept API key from environment variable', async () => {
-    process.env.NUXT_LETTERMINT_API_KEY = 'test-api-key'
-
-    await setup({
-      rootDir: fileURLToPath(new URL('./fixtures/with-env', import.meta.url)),
-      server: true,
+  async function post(body: Record<string, unknown>) {
+    const response = await fetch('/api/lettermint/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     })
 
-    // The module should be configured with the API key
-    expect(process.env.NUXT_LETTERMINT_API_KEY).toBe('test-api-key')
+    return { status: response.status, body: await response.json() }
+  }
+
+  it('sends the message and returns the message id', async () => {
+    const response = await post(message)
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({ success: true, messageId: 'msg_mock', status: 'pending' })
+    expect(lettermint.requests).toHaveLength(1)
+    expect(lettermint.requests[0]).toMatchObject({
+      method: 'POST',
+      path: '/v1/send',
+      token: 'test-api-key',
+      body: { from: message.from, to: [message.to], subject: message.subject, html: message.html },
+    })
   })
-})
 
-describe('Nuxt Lettermint Module - Config Test', async () => {
-  await setup({
-    rootDir: fileURLToPath(new URL('./fixtures/with-config', import.meta.url)),
-    server: true,
+  it('passes every recipient of an array', async () => {
+    await post({ ...message, to: ['one@acme.com', 'two@acme.com'], cc: 'cc@acme.com' })
+
+    expect(lettermint.requests[0]!.body).toMatchObject({
+      to: ['one@acme.com', 'two@acme.com'],
+      cc: ['cc@acme.com'],
+    })
   })
 
-  it('should accept API key from nuxt.config', async () => {
-    try {
-      // Module should be configured via nuxt.config and work with real API key
-      const response = await $fetch('/api/lettermint/send', {
-        method: 'POST',
-        body: {
-          from: 'nuxt@lettermint.dev',
-          to: 'ok@testing.lettermint.co',
-          subject: 'Test Config',
-          html: '<h1>Test from config</h1>',
-        },
-      })
+  it.each([
+    ['from', { to: message.to, subject: message.subject, text: 'Test' }],
+    ['to', { from: message.from, subject: message.subject, text: 'Test' }],
+    ['subject', { from: message.from, to: message.to, text: 'Test' }],
+  ])('rejects a body without %s', async (field, body) => {
+    const response = await post(body)
 
-      // If API key is configured, should return success
-      expect(response).toBeDefined()
-      expect(response.success).toBe(true)
-      expect(response.messageId).toBeDefined()
-    }
-    catch (error) {
-      // Expected if API key is not configured
-      expect(error).toBeDefined()
-    }
+    expect(response.status).toBe(400)
+    expect(response.body.statusMessage).toBe(`Missing required field: ${field}`)
+    expect(lettermint.requests).toHaveLength(0)
+  })
+
+  it('rejects a body without text or html', async () => {
+    const response = await post({ from: message.from, to: message.to, subject: message.subject })
+
+    expect(response.status).toBe(400)
+    expect(response.body.statusMessage).toBe('Either text or html content is required')
+    expect(lettermint.requests).toHaveLength(0)
+  })
+
+  it('surfaces the reason the API rejected a message', async () => {
+    lettermint.respondOnceWith({ status: 422, body: { message: 'Sending domain is not verified' } })
+
+    const response = await post(message)
+
+    expect(response.status).toBe(422)
+    expect(response.body.statusMessage).toBe('Sending domain is not verified')
+  })
+
+  it('surfaces an error reported under the error key', async () => {
+    lettermint.respondOnceWith({ status: 422, body: { error: 'ValidationError' } })
+
+    const response = await post(message)
+
+    expect(response.status).toBe(422)
+    expect(response.body.statusMessage).toBe('ValidationError')
   })
 })

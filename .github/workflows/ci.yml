@@ -27,6 +27,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Types
+        run: npm run dev:prepare && npm run test:types
+
   test:
     runs-on: ubuntu-latest
 

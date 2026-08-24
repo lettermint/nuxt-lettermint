@@ -1,60 +1,90 @@
-import { describe, it, expect } from 'vitest'
 import { fileURLToPath } from 'node:url'
+import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { setup, $fetch } from '@nuxt/test-utils/e2e'
+import { startMockLettermint } from './utils/mock-lettermint'
 
-describe('Server-side email sending', async () => {
+const lettermint = await startMockLettermint()
+
+process.env.NUXT_LETTERMINT_API_KEY = 'test-api-key'
+process.env.NUXT_LETTERMINT_BASE_URL = lettermint.baseUrl
+
+afterAll(() => lettermint.close())
+
+interface FixtureResult {
+  success: boolean
+  error?: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  result?: any
+}
+
+describe('server utilities', async () => {
   await setup({
     rootDir: fileURLToPath(new URL('./fixtures/server-test', import.meta.url)),
     server: true,
   })
 
-  it('should send email using sendEmail function', async () => {
-    try {
-      const response = await $fetch('/api/test-send-email')
-
-      // The response will depend on whether the API key is configured
-      expect(response).toBeDefined()
-    }
-    catch (error) {
-      // Expected if API key is not configured
-      expect(error).toBeDefined()
-    }
+  beforeEach(() => {
+    lettermint.requests.length = 0
   })
 
-  it('should use Lettermint SDK directly', async () => {
-    try {
-      const response = await $fetch('/api/test-sdk')
+  it('sends an email with sendEmail', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-send-email')
 
-      // The response will depend on whether the API key is configured
-      expect(response).toBeDefined()
-    }
-    catch (error) {
-      // Expected if API key is not configured
-      expect(error).toBeDefined()
-    }
+    expect(response.error).toBeUndefined()
+    expect(response.result).toEqual({ message_id: 'msg_mock', status: 'pending' })
+    expect(lettermint.requests[0]!.body).toMatchObject({
+      from: 'nuxt@lettermint.dev',
+      to: ['ok@testing.lettermint.co'],
+      subject: 'Test Email',
+      tag: 'test',
+    })
   })
 
-  it('should handle arrays of recipients', async () => {
-    try {
-      const response = await $fetch('/api/test-multiple-recipients')
+  it('keeps every address of an array of recipients', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-multiple-recipients')
 
-      expect(response).toBeDefined()
-    }
-    catch (error) {
-      // Expected if API key is not configured
-      expect(error).toBeDefined()
-    }
+    expect(response.error).toBeUndefined()
+    expect(lettermint.requests[0]!.body).toMatchObject({
+      to: ['ok@testing.lettermint.co', 'softbounce@testing.lettermint.co'],
+      cc: ['ok@testing.lettermint.co', 'softbounce@testing.lettermint.co'],
+      bcc: ['ok@testing.lettermint.co'],
+    })
   })
 
-  it('should handle all email options', async () => {
-    try {
-      const response = await $fetch('/api/test-full-options')
+  it('maps every supported option onto the payload', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-full-options')
 
-      expect(response).toBeDefined()
-    }
-    catch (error) {
-      // Expected if API key is not configured
-      expect(error).toBeDefined()
-    }
+    expect(response.error).toBeUndefined()
+    expect(lettermint.requests[0]!.body).toMatchObject({
+      reply_to: ['ok@testing.lettermint.co'],
+      text: 'Plain text version',
+      html: '<h1>HTML version</h1>',
+      headers: { 'X-Custom-Header': 'custom-value' },
+      metadata: { userId: '12345', campaign: 'test-campaign' },
+      tag: 'test',
+      attachments: [{ filename: 'test.txt', content: 'Test attachment content' }],
+    })
+  })
+
+  it('sends a batch in one request', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-batch')
+
+    expect(response.error).toBeUndefined()
+    expect(lettermint.requests).toHaveLength(1)
+    expect(lettermint.requests[0]!.path).toBe('/v1/send/batch')
+    expect(lettermint.requests[0]!.body).toMatchObject([
+      { to: ['first@testing.lettermint.co'], subject: 'First' },
+      { to: ['second@testing.lettermint.co', 'third@testing.lettermint.co'], subject: 'Second' },
+    ])
+  })
+
+  it('exposes the SDK builder through useLettermint', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-sdk')
+
+    expect(response.error).toBeUndefined()
+    expect(lettermint.requests[0]!.body).toMatchObject({
+      subject: 'Test SDK Email',
+      tag: 'sdk-test',
+    })
   })
 })

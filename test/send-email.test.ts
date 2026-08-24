@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { SendEmailOptions } from '../src/runtime/server/utils/lettermint'
 
-const runtimeConfig = vi.hoisted(() => ({ apiKey: 'test-api-key' }))
+const runtimeConfig = vi.hoisted(() => ({ apiKey: 'test-api-key', apiToken: '', baseUrl: '', timeout: 0 }))
 
 vi.mock('#imports', () => ({
   useRuntimeConfig: vi.fn(() => ({
     lettermint: {
       apiKey: runtimeConfig.apiKey,
+      apiToken: runtimeConfig.apiToken,
+      baseUrl: runtimeConfig.baseUrl,
+      timeout: runtimeConfig.timeout,
     },
   })),
 }))
@@ -43,6 +46,11 @@ async function send(options: SendEmailOptions) {
   return sendEmail(options)
 }
 
+async function sendMany(messages: SendEmailOptions[], options?: { idempotencyKey?: string }) {
+  const { sendEmails } = await import('../src/runtime/server/utils/lettermint')
+  return sendEmails(messages, options)
+}
+
 const base = {
   from: 'sender@acme.com',
   to: 'recipient@acme.com',
@@ -53,6 +61,8 @@ const base = {
 beforeEach(() => {
   requests = []
   runtimeConfig.apiKey = 'test-api-key'
+  runtimeConfig.apiToken = ''
+  runtimeConfig.baseUrl = ''
   vi.resetModules()
   vi.stubGlobal('fetch', mockFetch())
 })
@@ -119,6 +129,25 @@ describe('sendEmail payload', () => {
     expect(requests[0]!.body.tag).toBeUndefined()
   })
 
+  it('maps settings onto the payload', async () => {
+    await send({
+      ...base,
+      settings: { trackOpens: true, trackClicks: false, tls: 'enforced' },
+    })
+
+    expect(requests[0]!.body.settings).toEqual({
+      track_opens: true,
+      track_clicks: false,
+      tls: 'enforced',
+    })
+  })
+
+  it('omits settings that were not set', async () => {
+    await send({ ...base, settings: { trackOpens: true } })
+
+    expect(requests[0]!.body.settings).toEqual({ track_opens: true })
+  })
+
   it('passes headers, metadata and route through', async () => {
     await send({
       ...base,
@@ -168,5 +197,55 @@ describe('sendEmail configuration errors', () => {
     runtimeConfig.apiKey = ''
 
     await expect(send(base)).rejects.toThrow('Lettermint API key is not configured')
+  })
+})
+
+describe('sendEmails', () => {
+  it('posts every message to the batch endpoint in order', async () => {
+    const result = await sendMany([
+      { ...base, to: 'one@acme.com', subject: 'First' },
+      { ...base, to: ['two@acme.com', 'three@acme.com'], subject: 'Second' },
+    ])
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.url).toBe('https://api.lettermint.co/v1/send/batch')
+    expect(requests[0]!.body).toEqual([
+      { from: base.from, to: ['one@acme.com'], subject: 'First', text: 'Hi' },
+      { from: base.from, to: ['two@acme.com', 'three@acme.com'], subject: 'Second', text: 'Hi' },
+    ])
+    expect(result).toEqual({ message_id: 'msg_1', status: 'pending' })
+  })
+
+  it('applies the same option mapping as a single send', async () => {
+    await sendMany([{
+      ...base,
+      cc: 'cc@acme.com',
+      tags: [{ name: 'campaign', value: '123' }],
+      settings: { trackClicks: true },
+      attachments: [{ filename: 'a.txt', content: 'YQ==', contentType: 'text/plain' }],
+    }])
+
+    expect(requests[0]!.body[0]).toMatchObject({
+      cc: ['cc@acme.com'],
+      tags: [{ name: 'campaign', value: '123' }],
+      settings: { track_clicks: true },
+      attachments: [{ filename: 'a.txt', content: 'YQ==', content_type: 'text/plain' }],
+    })
+  })
+
+  it('sends the idempotency key as a header', async () => {
+    await sendMany([base], { idempotencyKey: 'batch-1' })
+
+    expect(requests[0]!.headers['Idempotency-Key']).toBe('batch-1')
+  })
+})
+
+describe('client configuration', () => {
+  it('uses a configured base url and timeout', async () => {
+    runtimeConfig.baseUrl = 'https://mail.internal.acme.com/v1'
+
+    await send(base)
+
+    expect(requests[0]!.url).toBe('https://mail.internal.acme.com/v1/send')
   })
 })
