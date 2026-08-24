@@ -19,7 +19,8 @@ Upgrading from v1? See [UPGRADE.md](./UPGRADE.md).
 - 🚀 Full TypeScript support
 - 🔒 Secure API key management
 - 📧 Simple composable for client-side usage
-- 🛠️ Direct server-side SDK access
+- 📦 Batch sending
+- 🛠️ Direct server-side SDK access, including the team API
 - ⚙️ Flexible configuration via environment variables or `nuxt.config.ts`
 - 🎯 Compatible with Nuxt 3 and Nuxt 4
 
@@ -89,15 +90,24 @@ The module accepts the following configuration options:
 export default defineNuxtConfig({
   modules: ['nuxt-lettermint'],
   lettermint: {
-    // Your Lettermint API key (see step 3 above for configuration options)
+    // Your project sending token (see step 3 above for configuration options)
     apiKey: 'your-api-key',
-    
+
+    // Team API token, only needed for useLettermintApi(). Server-side only.
+    apiToken: 'your-team-api-token',
+
     // Enable/disable the auto-generated /api/lettermint/send endpoint (default: true)
     // Set to false if you want to create your own custom endpoints
-    autoEndpoint: true
+    autoEndpoint: true,
+
+    // Override the API base URL and request timeout in ms
+    baseUrl: 'https://api.lettermint.co/v1',
+    timeout: 30000
   }
 })
 ```
+
+Every option has an environment variable equivalent: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`.
 
 ### Disabling the Auto-Generated Endpoint
 
@@ -181,6 +191,7 @@ export default defineEventHandler(async () => {
 | `metadata` | `Record<string, unknown>` | Returned on the message and in webhooks. |
 | `tags` | `string[] \| { name, value }[]` | A single tag (a `string[]` uses its first entry), or key/value tags. |
 | `attachments` | `Array<{ filename, content, contentType?, contentId? }>` | `content` is base64 or a `Buffer`. Set `contentId` to reference the file from the HTML body. |
+| `settings` | `{ trackOpens?, trackClicks?, tls? }` | Per-message overrides. `tls` is `opportunistic` or `enforced`. |
 | `route` | `string` | Send through a specific route instead of the project default. |
 | `idempotencyKey` | `string` | Reuse across retries so the message is only delivered once. |
 
@@ -198,7 +209,52 @@ await sendEmail({
 })
 ```
 
+### Batch Sending
+
+`sendEmails()` puts every message in a single request. Each one is accepted or rejected on its own, and the results come back in the order you passed them.
+
+```typescript
+// server/api/notify.post.ts
+import { sendEmails } from '#imports'
+
+export default defineEventHandler(async () => {
+  return await sendEmails(
+    subscribers.map(subscriber => ({
+      from: 'hello@example.com',
+      to: subscriber.email,
+      subject: 'Your weekly digest',
+      html: renderDigest(subscriber),
+    })),
+    { idempotencyKey: `digest-${week}` },
+  )
+})
+```
+
+### Team API
+
+`useLettermintApi()` exposes the rest of the Lettermint API: domains, messages, projects, routes, stats, suppressions, team and webhooks. It needs a **team API token**, which is a different credential from your project sending key — create one in your team settings and set `NUXT_LETTERMINT_API_TOKEN`.
+
+Keep this server-side. The token grants access to your whole team, so never expose it through a public endpoint.
+
+```typescript
+// server/api/deliverability.get.ts
+import { useLettermintApi } from '#imports'
+
+export default defineEventHandler(async () => {
+  const api = useLettermintApi()
+
+  const [stats, suppressions] = await Promise.all([
+    api.stats.retrieve({ start: '2026-01-01', end: '2026-01-31' }),
+    api.suppressions.list(),
+  ])
+
+  return { stats, suppressions }
+})
+```
+
 ### Advanced Usage
+
+`useLettermint()` returns the SDK instance itself, for anything the helpers above don't cover:
 
 ```typescript
 import { useLettermint } from '#imports'
@@ -211,6 +267,9 @@ await lettermint.email
   .html('<h1>Hello</h1>')
   .tag('campaign')
   .send()
+
+// Check that the credentials work
+await lettermint.email.ping()
 ```
 
 ## Links

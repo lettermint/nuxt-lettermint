@@ -3,6 +3,10 @@ import { defu } from 'defu'
 
 export interface ModuleOptions {
   apiKey?: string
+  /** Team API token. Separate from the sending key, and server-side only. */
+  apiToken?: string
+  baseUrl?: string
+  timeout?: number
   autoEndpoint?: boolean
 }
 
@@ -22,6 +26,9 @@ export default defineNuxtModule<ModuleOptions>({
 
     const runtimeConfig = {
       apiKey: options.apiKey || process.env.NUXT_LETTERMINT_API_KEY || '',
+      apiToken: options.apiToken || process.env.NUXT_LETTERMINT_API_TOKEN || '',
+      baseUrl: options.baseUrl || process.env.NUXT_LETTERMINT_BASE_URL || '',
+      timeout: options.timeout || Number(process.env.NUXT_LETTERMINT_TIMEOUT) || 0,
     }
 
     nuxt.options.runtimeConfig.lettermint = defu(
@@ -49,6 +56,9 @@ declare module '@nuxt/schema' {
   interface RuntimeConfig {
     lettermint: {
       apiKey: string
+      apiToken: string
+      baseUrl: string
+      timeout: number
     }
   }
   interface PublicRuntimeConfig {

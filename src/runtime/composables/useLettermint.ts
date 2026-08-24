@@ -1,25 +1,9 @@
 import { $fetch } from 'ofetch'
 import type { Ref } from 'vue'
 import { ref } from '#imports'
+import type { LettermintEmailOptions } from '../types'
 
-export interface LettermintEmailOptions {
-  from: string
-  to: string | string[]
-  subject: string
-  text?: string
-  html?: string
-  cc?: string | string[]
-  bcc?: string | string[]
-  replyTo?: string | string[]
-  headers?: Record<string, string>
-  metadata?: Record<string, unknown>
-  tags?: string[]
-  attachments?: Array<{
-    filename: string
-    content: string | Buffer
-    contentType?: string
-  }>
-}
+export type { LettermintEmailOptions } from '../types'
 
 export interface LettermintResponse {
   success: boolean

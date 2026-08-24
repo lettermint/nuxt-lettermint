@@ -1,9 +1,9 @@
-import type { MessageStatus } from 'lettermint'
+import type { MessageStatus, TlsPolicy } from 'lettermint'
 
 export interface LettermintModuleOptions {
   apiKey?: string
-  baseUrl?: string
-  timeout?: number
+  apiToken?: string
+  autoEndpoint?: boolean
 }
 
 export interface LettermintEmailAddress {
@@ -15,22 +15,37 @@ export interface LettermintAttachment {
   filename: string
   content: string | Buffer
   contentType?: string
+  /** Set to reference the attachment from the HTML body (inline attachment). */
   contentId?: string
 }
 
+export interface LettermintTag {
+  name: string
+  value: string
+}
+
+export interface LettermintSettings {
+  trackOpens?: boolean
+  trackClicks?: boolean
+  tls?: TlsPolicy
+}
+
 export interface LettermintEmailOptions {
-  from: string | LettermintEmailAddress
-  to: string | string[] | LettermintEmailAddress | LettermintEmailAddress[]
+  from: string
+  to: string | string[]
   subject: string
   text?: string
   html?: string
-  cc?: string | string[] | LettermintEmailAddress | LettermintEmailAddress[]
-  bcc?: string | string[] | LettermintEmailAddress | LettermintEmailAddress[]
-  replyTo?: string | string[] | LettermintEmailAddress | LettermintEmailAddress[]
+  cc?: string | string[]
+  bcc?: string | string[]
+  replyTo?: string | string[]
   headers?: Record<string, string>
   metadata?: Record<string, unknown>
-  tags?: string[]
+  /** A single tag (`string[]` uses its first entry), or key/value tags. */
+  tags?: string[] | LettermintTag[]
   attachments?: LettermintAttachment[]
+  settings?: LettermintSettings
+  route?: string
   idempotencyKey?: string
 }
 

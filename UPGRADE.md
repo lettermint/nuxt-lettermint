@@ -55,14 +55,40 @@ await lettermint.email.from('hello@acme.com').to('user@acme.com').subject('Hello
 
 Concurrent sends could bleed into each other. The module kept one SDK instance, and its email builder holds the message being composed as instance state, so two requests building a message at the same time could overwrite each other's recipients or subject. Each send now builds its own message. `useLettermint()` still returns the shared instance.
 
-## New options
+## New
+
+### Batch sending
+
+`sendEmails()` sends several messages in one request, with the results in the order you passed them:
+
+```ts
+await sendEmails(messages, { idempotencyKey: `digest-${week}` })
+```
+
+### The team API
+
+`useLettermintApi()` exposes domains, messages, projects, routes, stats, suppressions, team and webhooks. It authenticates with a **team API token**, a different credential from the project sending key, so it needs its own configuration:
+
+```ts
+// nuxt.config.ts — or NUXT_LETTERMINT_API_TOKEN
+lettermint: {
+  apiToken: 'your-team-api-token',
+}
+```
+
+Server-side only: the token covers your whole team.
+
+### New options
 
 `sendEmail()` accepts a few extra fields, all optional:
 
 | Option | Description |
 | --- | --- |
+| `settings` | `trackOpens`, `trackClicks` and the `tls` policy, per message. |
 | `route` | Send through a specific route instead of the project default. |
 | `idempotencyKey` | Reuse across retries of the same send so the message is only delivered once. |
 | `attachments[].contentType` | MIME type of the attachment. The module accepted this before but dropped it. |
 | `attachments[].contentId` | Reference the attachment from the HTML body (inline attachment). |
 | `tags` as `{ name, value }[]` | Key/value tags, as added in SDK 2.3.0. |
+
+And two module options, both matching what the SDK client accepts: `baseUrl` and `timeout` (`NUXT_LETTERMINT_BASE_URL`, `NUXT_LETTERMINT_TIMEOUT`).
