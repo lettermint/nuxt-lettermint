@@ -1,3 +1,5 @@
+import type { MessageStatus } from 'lettermint'
+
 export interface LettermintModuleOptions {
   apiKey?: string
   baseUrl?: string
@@ -13,6 +15,7 @@ export interface LettermintAttachment {
   filename: string
   content: string | Buffer
   contentType?: string
+  contentId?: string
 }
 
 export interface LettermintEmailOptions {
@@ -33,7 +36,7 @@ export interface LettermintEmailOptions {
 
 export interface LettermintSendResponse {
   message_id: string
-  status: 'pending' | 'sent' | 'failed'
+  status: MessageStatus
 }
 
 export interface LettermintApiResponse {

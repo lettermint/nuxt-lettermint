@@ -48,10 +48,11 @@ export default defineEventHandler(async (event) => {
     const err = error as any
 
     // Handle Lettermint SDK errors with responseBody
-    if (err.responseBody?.message) {
+    const responseBodyMessage = err.responseBody?.message || err.responseBody?.error
+    if (responseBodyMessage) {
       throw createError({
         statusCode: err.statusCode || 422,
-        statusMessage: err.responseBody.message,
+        statusMessage: responseBodyMessage,
       })
     }
 
