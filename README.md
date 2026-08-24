@@ -12,6 +12,8 @@ A Nuxt module for sending emails using the [Lettermint](https://lettermint.co) e
 
 Lettermint is a European transactional email service provider focused on simplicity, reliability, and developer experience. Visit [Lettermint.co](https://lettermint.co) for more information about our email platform.
 
+Upgrading from v1? See [UPGRADE.md](./UPGRADE.md).
+
 ## Features
 
 - 🚀 Full TypeScript support
@@ -158,6 +160,41 @@ export default defineEventHandler(async () => {
     html: '<h1>Welcome!</h1>',
     tags: ['welcome']
   })
+})
+```
+
+#### Email options
+
+`sendEmail()` and the `send()` returned by `useLettermint()` take the same options:
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `from` | `string` | Sender address, optionally as `Name <address>`. Required. |
+| `to` | `string \| string[]` | Recipients. Required. |
+| `subject` | `string` | Required. |
+| `text` | `string` | Plain text body. Provide `text`, `html`, or both. |
+| `html` | `string` | HTML body. |
+| `cc` | `string \| string[]` | |
+| `bcc` | `string \| string[]` | |
+| `replyTo` | `string \| string[]` | |
+| `headers` | `Record<string, string>` | Custom headers. |
+| `metadata` | `Record<string, unknown>` | Returned on the message and in webhooks. |
+| `tags` | `string[] \| { name, value }[]` | A single tag (a `string[]` uses its first entry), or key/value tags. |
+| `attachments` | `Array<{ filename, content, contentType?, contentId? }>` | `content` is base64 or a `Buffer`. Set `contentId` to reference the file from the HTML body. |
+| `route` | `string` | Send through a specific route instead of the project default. |
+| `idempotencyKey` | `string` | Reuse across retries so the message is only delivered once. |
+
+```typescript
+await sendEmail({
+  from: 'Acme <hello@example.com>',
+  to: ['ok@testing.lettermint.co', 'second@testing.lettermint.co'],
+  subject: 'Your invoice',
+  html: '<h1>Invoice</h1><img src="cid:logo">',
+  attachments: [
+    { filename: 'invoice.pdf', content: pdfBuffer, contentType: 'application/pdf' },
+    { filename: 'logo.png', content: logoBuffer, contentId: 'logo' },
+  ],
+  idempotencyKey: `invoice-${invoice.id}`,
 })
 ```
 
