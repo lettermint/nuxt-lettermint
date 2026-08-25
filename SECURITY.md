@@ -20,4 +20,4 @@ Useful things to include: what you can do with it, the steps to reproduce, and t
 This module reads your Lettermint credentials from the server-side runtime config, so they stay out of the client bundle. Two things to be careful with in your own code:
 
 - The team API token used by `useLettermintApi()` covers your entire team. Never return it, or data derived from it, through a public route.
-- `/api/lettermint/send` is not registered unless you set `autoEndpoint: true`, and it has no authentication of its own. If you enable it, put your own check in front of it — see [the README](./README.md#the-auto-generated-endpoint).
+- `/api/lettermint/send` is not registered unless you set `autoEndpoint: true`, and it has no authentication of its own. If you enable it, put your own check in front of it, see [the README](./README.md#the-auto-generated-endpoint).

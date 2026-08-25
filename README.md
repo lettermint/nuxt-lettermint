@@ -16,12 +16,13 @@ Upgrading from v1? See [UPGRADE.md](./UPGRADE.md).
 
 ## Features
 
+- 🇪🇺 European email infrastructure
 - 🚀 Full TypeScript support
 - 🔒 Secure API key management
 - 📧 Simple composable for client-side usage
 - 📦 Batch sending
-- 🛠️ Direct server-side SDK access, including the team API
-- ⚙️ Flexible configuration via environment variables or `nuxt.config.ts`
+- 🛠️ Full SDK and team API access
+- ⚙️ Configurable via env or `nuxt.config.ts`
 - 🎯 Compatible with Nuxt 3 and Nuxt 4
 
 ## Quick Setup
@@ -97,7 +98,7 @@ export default defineNuxtConfig({
     apiToken: 'your-team-api-token',
 
     // Register /api/lettermint/send (default: false). The route has no
-    // authentication of its own — see "The auto-generated endpoint" below
+    // authentication of its own. See "The auto-generated endpoint" below
     autoEndpoint: true,
 
     // Override the API base URL and request timeout in ms
@@ -111,7 +112,7 @@ Every option has an environment variable equivalent: `NUXT_LETTERMINT_API_KEY`, 
 
 ### The Auto-Generated Endpoint
 
-The module can register an endpoint at `/api/lettermint/send`, which the client-side `useLettermint()` composable posts to. It is **off by default**: the route has no authentication of its own, so anyone who can reach your site could send mail through it — from your domain, against your quota.
+The module can register an endpoint at `/api/lettermint/send`, which the client-side `useLettermint()` composable posts to. It is **off by default**: the route has no authentication of its own, so anyone who can reach your site could send mail through it, from your domain and against your quota.
 
 Turn it on when you want it, and put something in front of it:
 
@@ -154,7 +155,7 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-Point the composable at your own route with `useLettermint({ endpoint: '/api/contact' })`. Server-side `sendEmail()` and `sendEmails()` work regardless of this setting — they never go through the endpoint.
+Point the composable at your own route with `useLettermint({ endpoint: '/api/contact' })`. Server-side `sendEmail()` and `sendEmails()` work regardless of this setting, since they never go through the endpoint.
 
 ## Usage
 
@@ -252,7 +253,7 @@ export default defineEventHandler(async () => {
 
 ### Team API
 
-`useLettermintApi()` exposes the rest of the Lettermint API: domains, messages, projects, routes, stats, suppressions, team and webhooks. It needs a **team API token**, which is a different credential from your project sending key — create one in your team settings and set `NUXT_LETTERMINT_API_TOKEN`.
+`useLettermintApi()` exposes the rest of the Lettermint API: domains, messages, projects, routes, stats, suppressions, team and webhooks. It needs a **team API token**, which is a different credential from your project sending key. Create one in your team settings and set `NUXT_LETTERMINT_API_TOKEN`.
 
 Keep this server-side. The token grants access to your whole team, so never expose it through a public endpoint.
 
@@ -334,7 +335,7 @@ await lettermint.email.ping()
 
 ## Security
 
-Found a vulnerability? Please report it privately — see [SECURITY.md](./SECURITY.md).
+Found a vulnerability? Please report it privately, see [SECURITY.md](./SECURITY.md).
 
 ## License
 
