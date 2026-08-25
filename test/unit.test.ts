@@ -96,6 +96,17 @@ describe('useLettermint composable', () => {
     expect(post).toHaveBeenCalledWith('/api/contact', { method: 'POST', body: message })
   })
 
+  it('accepts the raw SDK result from a custom endpoint', async () => {
+    post.mockResolvedValue({ message_id: 'msg_5', status: 'pending' })
+    const { send, lastMessageId } = await useLettermint({ endpoint: '/api/contact' })
+
+    const response = await send(message)
+
+    expect(response.success).toBe(true)
+    expect(response.messageId).toBe('msg_5')
+    expect(lastMessageId.value).toBe('msg_5')
+  })
+
   it('falls back to a generic message when the error carries none', async () => {
     post.mockRejectedValue({})
     const { send, error } = await useLettermint()
@@ -116,6 +127,7 @@ describe('server utilities', () => {
       'sendEmails',
       'useLettermint',
       'useLettermintApi',
+      'useLettermintEmail',
     ])
   })
 })

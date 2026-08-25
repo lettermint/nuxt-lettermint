@@ -49,16 +49,24 @@ export function useLettermint(options: UseLettermintOptions = {}): UseLettermint
     error.value = null
 
     try {
-      const response = await $fetch(endpoint, {
+      // A custom endpoint may hand back the SDK result as it is, rather than
+      // the shape the module's own endpoint answers with.
+      const response = await $fetch<LettermintResponse & { message_id?: string }>(endpoint, {
         method: 'POST',
         body: message,
       })
 
-      if (response.messageId) {
-        lastMessageId.value = response.messageId
+      const messageId = response.messageId || response.message_id
+
+      if (messageId) {
+        lastMessageId.value = messageId
       }
 
-      return response
+      return {
+        ...response,
+        success: response.success ?? true,
+        messageId,
+      }
     }
     catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

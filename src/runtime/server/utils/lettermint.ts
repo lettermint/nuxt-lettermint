@@ -10,7 +10,6 @@ export type SendEmailOptions = LettermintEmailOptions
 
 type BatchMessage = SendBatchMailRequest[number]
 
-let lettermintInstance: Lettermint | null = null
 let apiInstance: ApiClient | null = null
 
 function getApiKey(): string {
@@ -42,15 +41,22 @@ function getApiToken(): string {
   return config.lettermint.apiToken
 }
 
+/**
+ * The SDK, with its email builder. A new instance per call: the builder holds
+ * the message being composed, so a shared one would let concurrent requests
+ * overwrite each other. Hold on to the result for one send, not for the
+ * lifetime of the server.
+ */
 export function useLettermint(): Lettermint {
-  if (!lettermintInstance) {
-    lettermintInstance = new Lettermint({
-      ...getClientConfig(),
-      apiToken: getApiKey(),
-    })
-  }
+  return new Lettermint({
+    ...getClientConfig(),
+    apiToken: getApiKey(),
+  })
+}
 
-  return lettermintInstance
+/** An email builder of its own, ready to compose and send one message. */
+export function useLettermintEmail(): EmailEndpoint {
+  return createEmail()
 }
 
 export function useLettermintApi(): ApiClient {
@@ -61,8 +67,6 @@ export function useLettermintApi(): ApiClient {
   return apiInstance
 }
 
-// The builder holds the message being composed, so sharing one would let
-// concurrent requests overwrite each other's payload.
 function createEmail(): EmailEndpoint {
   return Lettermint.email(getApiKey(), getClientConfig())
 }
@@ -75,14 +79,22 @@ function isTagList(tags: string[] | LettermintTag[]): tags is LettermintTag[] {
   return typeof tags[0] === 'object'
 }
 
-// The API takes metadata as strings. Passing a number through unchanged would
-// come back as a validation error rather than a value.
+// The API takes metadata as strings. Numbers and booleans are converted;
+// anything else would only stringify into something the receiver cannot read.
 function toStringMap(values: Record<string, unknown>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(values)
-      .filter(([, value]) => value !== null && value !== undefined)
-      .map(([key, value]) => [key, typeof value === 'string' ? value : String(value)]),
-  )
+  const entries: Array<[string, string]> = []
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null || value === undefined) continue
+
+    if (typeof value === 'object') {
+      throw new TypeError(`Metadata value for "${key}" must be a string, number or boolean, received ${Array.isArray(value) ? 'an array' : 'an object'}.`)
+    }
+
+    entries.push([key, String(value)])
+  }
+
+  return Object.fromEntries(entries)
 }
 
 function toPayload(options: LettermintEmailOptions): BatchMessage {

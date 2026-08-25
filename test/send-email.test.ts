@@ -174,6 +174,13 @@ describe('sendEmail payload', () => {
     })
   })
 
+  it('refuses metadata that cannot be represented as a string', async () => {
+    await expect(send({ ...base, metadata: { order: { id: 42 } } }))
+      .rejects.toThrow('Metadata value for "order" must be a string, number or boolean, received an object.')
+
+    expect(requests).toHaveLength(0)
+  })
+
   it('sends the idempotency key as a header', async () => {
     await send({ ...base, idempotencyKey: 'order-42' })
 
@@ -259,6 +266,13 @@ describe('sendEmails', () => {
     })
   })
 
+  it('refuses metadata that cannot be represented as a string', async () => {
+    await expect(send({ ...base, metadata: { order: { id: 42 } } }))
+      .rejects.toThrow('Metadata value for "order" must be a string, number or boolean, received an object.')
+
+    expect(requests).toHaveLength(0)
+  })
+
   it('sends the idempotency key as a header', async () => {
     await sendMany([base], { idempotencyKey: 'batch-1' })
 
@@ -273,5 +287,19 @@ describe('client configuration', () => {
     await send(base)
 
     expect(requests[0]!.url).toBe('https://mail.internal.acme.com/v1/send')
+  })
+})
+
+describe('useLettermint', () => {
+  it('hands out an email builder of its own for each send', async () => {
+    const { useLettermintEmail } = await import('../src/runtime/server/utils/lettermint')
+
+    expect(useLettermintEmail()).not.toBe(useLettermintEmail())
+  })
+
+  it('does not share the SDK instance across calls', async () => {
+    const { useLettermint } = await import('../src/runtime/server/utils/lettermint')
+
+    expect(useLettermint()).not.toBe(useLettermint())
   })
 })
