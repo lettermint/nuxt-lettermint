@@ -74,6 +74,8 @@ await lettermint.email.from('hello@acme.com').to('user@acme.com').subject('Hello
 
 ## TypeScript
 
+`LettermintEmailAddress` is gone. It described a `{ email, name }` recipient, which no version of the module ever accepted: recipients have always been strings, optionally in `Name <address>` form. Write `'Acme <hello@acme.com>'` instead.
+
 `LettermintSendResponse.status` used to be `'pending' | 'sent' | 'failed'`. It now uses the SDK's `MessageStatus`, which covers all fourteen statuses the API can return (`queued`, `delivered`, `opened`, `hard_bounced`, and so on). An exhaustive `switch` or a comparison against a status that no longer exists will fail to compile until you widen it.
 
 ## Fixed

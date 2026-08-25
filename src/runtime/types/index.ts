@@ -3,12 +3,9 @@ import type { MessageStatus, TlsPolicy } from 'lettermint'
 export interface LettermintModuleOptions {
   apiKey?: string
   apiToken?: string
+  baseUrl?: string
+  timeout?: number
   autoEndpoint?: boolean
-}
-
-export interface LettermintEmailAddress {
-  email: string
-  name?: string
 }
 
 export interface LettermintAttachment {

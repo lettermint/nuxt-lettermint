@@ -146,12 +146,14 @@ import { sendEmail } from '#imports'
 export default defineEventHandler(async (event) => {
   const { message } = await readBody(event)
 
-  return await sendEmail({
+  const result = await sendEmail({
     from: 'website@example.com',
     to: 'support@example.com',
     subject: 'New contact form message',
     text: message,
   })
+
+  return { success: true, messageId: result.message_id, status: result.status }
 })
 ```
 
@@ -317,13 +319,12 @@ export default defineEventHandler(async (event) => {
 
 ### Advanced Usage
 
-`useLettermint()` returns the SDK instance itself, for anything the helpers above don't cover:
+`useLettermintEmail()` hands you an email builder for anything the helpers above don't cover. Take one per message: the builder holds the message it is composing, so a builder kept around and shared between requests would let them overwrite each other.
 
 ```typescript
-import { useLettermint } from '#imports'
+import { useLettermintEmail, useLettermint } from '#imports'
 
-const lettermint = useLettermint()
-await lettermint.email
+await useLettermintEmail()
   .from('sender@example.com')
   .to('ok@testing.lettermint.co')
   .subject('Hello')
@@ -331,8 +332,8 @@ await lettermint.email
   .tag('campaign')
   .send()
 
-// Check that the credentials work
-await lettermint.email.ping()
+// useLettermint() returns the SDK instance itself, for the rest of its surface
+await useLettermint().email.ping()
 ```
 
 ## Links
