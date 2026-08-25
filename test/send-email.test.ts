@@ -161,6 +161,19 @@ describe('sendEmail payload', () => {
     expect(requests[0]!.body.route).toBe('transactional')
   })
 
+  it('sends metadata values as strings', async () => {
+    await send({
+      ...base,
+      metadata: { orderId: 42, priority: true, note: 'rush', dropped: null },
+    })
+
+    expect(requests[0]!.body.metadata).toEqual({
+      orderId: '42',
+      priority: 'true',
+      note: 'rush',
+    })
+  })
+
   it('sends the idempotency key as a header', async () => {
     await send({ ...base, idempotencyKey: 'order-42' })
 
@@ -230,6 +243,19 @@ describe('sendEmails', () => {
       tags: [{ name: 'campaign', value: '123' }],
       settings: { track_clicks: true },
       attachments: [{ filename: 'a.txt', content: 'YQ==', content_type: 'text/plain' }],
+    })
+  })
+
+  it('sends metadata values as strings', async () => {
+    await send({
+      ...base,
+      metadata: { orderId: 42, priority: true, note: 'rush', dropped: null },
+    })
+
+    expect(requests[0]!.body.metadata).toEqual({
+      orderId: '42',
+      priority: 'true',
+      note: 'rush',
     })
   })
 

@@ -75,6 +75,16 @@ function isTagList(tags: string[] | LettermintTag[]): tags is LettermintTag[] {
   return typeof tags[0] === 'object'
 }
 
+// The API takes metadata as strings. Passing a number through unchanged would
+// come back as a validation error rather than a value.
+function toStringMap(values: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(values)
+      .filter(([, value]) => value !== null && value !== undefined)
+      .map(([key, value]) => [key, typeof value === 'string' ? value : String(value)]),
+  )
+}
+
 function toPayload(options: LettermintEmailOptions): BatchMessage {
   const payload: BatchMessage = {
     from: options.from,
@@ -88,7 +98,7 @@ function toPayload(options: LettermintEmailOptions): BatchMessage {
   if (options.bcc) payload.bcc = toArray(options.bcc)
   if (options.replyTo) payload.reply_to = toArray(options.replyTo)
   if (options.headers) payload.headers = options.headers
-  if (options.metadata) payload.metadata = options.metadata as Record<string, string>
+  if (options.metadata) payload.metadata = toStringMap(options.metadata)
   if (options.route) payload.route = options.route
 
   if (options.tags?.length) {
