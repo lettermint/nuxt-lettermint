@@ -1,7 +1,7 @@
 import { Lettermint } from 'lettermint'
-import type { ApiClient, EmailEndpoint, SendBatchEmailResponse, SendBatchMailRequest, SendEmailResponse } from 'lettermint'
+import type { ApiClient, EmailEndpoint, SendBatchMailRequest } from 'lettermint'
 import { useRuntimeConfig } from '#imports'
-import type { LettermintEmailOptions, LettermintTag } from '../../types'
+import type { LettermintAttachment, LettermintEmailOptions, LettermintTag, SendBatchEmailResponse, SendEmailResponse } from '../../types'
 
 export type { LettermintEmailOptions, LettermintSettings, LettermintTag } from '../../types'
 
@@ -81,14 +81,31 @@ function toStringMap(values: Record<string, unknown>): Record<string, string> {
   for (const [key, value] of Object.entries(values)) {
     if (value === null || value === undefined) continue
 
-    if (typeof value === 'object') {
-      throw new TypeError(`Metadata value for "${key}" must be a string, number or boolean, received ${Array.isArray(value) ? 'an array' : 'an object'}.`)
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      const kind = Array.isArray(value) ? 'an array' : typeof value === 'object' ? 'an object' : `a ${typeof value}`
+      throw new TypeError(`Metadata value for "${key}" must be a string, number or boolean, received ${kind}.`)
     }
 
     entries.push([key, String(value)])
   }
 
   return Object.fromEntries(entries)
+}
+
+// A Buffer that crossed the HTTP endpoint arrives JSON-serialized as
+// { type: 'Buffer', data: [...] }.
+function toAttachmentContent(attachment: LettermintAttachment): string {
+  const { content } = attachment
+
+  if (typeof content === 'string') return content
+  if (Buffer.isBuffer(content)) return content.toString('base64')
+
+  const serialized = content as { type?: unknown, data?: unknown }
+  if (serialized?.type === 'Buffer' && Array.isArray(serialized.data)) {
+    return Buffer.from(serialized.data as number[]).toString('base64')
+  }
+
+  throw new TypeError(`Attachment content for "${attachment.filename}" must be a base64 string or a Buffer.`)
 }
 
 function toPayload(options: LettermintEmailOptions): BatchMessage {
@@ -127,7 +144,7 @@ function toPayload(options: LettermintEmailOptions): BatchMessage {
   if (options.attachments) {
     payload.attachments = options.attachments.map(attachment => ({
       filename: attachment.filename,
-      content: typeof attachment.content === 'string' ? attachment.content : attachment.content.toString('base64'),
+      content: toAttachmentContent(attachment),
       ...attachment.contentType && { content_type: attachment.contentType },
       ...attachment.contentId && { content_id: attachment.contentId },
     }))
@@ -165,9 +182,14 @@ export async function sendEmail(options: LettermintEmailOptions): Promise<SendEm
 }
 
 export async function sendEmails(
-  messages: LettermintEmailOptions[],
+  messages: Array<Omit<LettermintEmailOptions, 'idempotencyKey'>>,
   options: { idempotencyKey?: string } = {},
 ): Promise<SendBatchEmailResponse> {
+  const keyed = messages.findIndex(message => (message as LettermintEmailOptions).idempotencyKey)
+  if (keyed !== -1) {
+    throw new TypeError(`Message ${keyed} carries an idempotencyKey, but the API applies idempotency to the batch as a whole. Pass it as sendEmails(messages, { idempotencyKey }).`)
+  }
+
   let email = createEmail()
 
   if (options.idempotencyKey) {

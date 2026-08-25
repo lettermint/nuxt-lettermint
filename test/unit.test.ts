@@ -96,6 +96,37 @@ describe('useLettermint composable', () => {
     expect(post).toHaveBeenCalledWith('/api/contact', { method: 'POST', body: message })
   })
 
+  it('treats an empty response from a custom endpoint as sent', async () => {
+    post.mockResolvedValue(undefined)
+    const { send, error } = await useLettermint({ endpoint: '/api/notify' })
+
+    const response = await send(message)
+
+    expect(response.success).toBe(true)
+    expect(error.value).toBeNull()
+  })
+
+  it('refuses a page where JSON was expected', async () => {
+    post.mockResolvedValue('<!DOCTYPE html><html><body>app</body></html>')
+    const { send, error } = await useLettermint()
+
+    const response = await send(message)
+
+    expect(response.success).toBe(false)
+    expect(response.error).toContain('answered with a page instead of JSON')
+    expect(error.value).toBe(response.error)
+  })
+
+  it('mirrors a passed-through failure into the error ref', async () => {
+    post.mockResolvedValue({ success: false, error: 'rate limited' })
+    const { send, error } = await useLettermint()
+
+    const response = await send(message)
+
+    expect(response).toMatchObject({ success: false, error: 'rate limited' })
+    expect(error.value).toBe('rate limited')
+  })
+
   it('accepts the raw SDK result from a custom endpoint', async () => {
     post.mockResolvedValue({ message_id: 'msg_5', status: 'pending' })
     const { send, lastMessageId } = await useLettermint({ endpoint: '/api/contact' })

@@ -82,7 +82,7 @@ await lettermint.email.from('hello@acme.com').to('user@acme.com').subject('Hello
 
 ## Fixed
 
-Concurrent sends could bleed into each other. The module kept one SDK instance, and its email builder holds the message being composed as instance state, so two requests building a message at the same time could overwrite each other's recipients or subject. Each send now builds its own message. `useLettermint()` still returns the shared instance.
+Concurrent sends could bleed into each other. The module kept one SDK instance, and its email builder holds the message being composed as instance state, so two requests building a message at the same time could overwrite each other's recipients or subject. Each send now builds its own message, and `useLettermint()` hands out a fresh instance per call rather than a shared one. Take one where you need it; there is no instance to hold on to.
 
 ## Error responses
 

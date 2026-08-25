@@ -108,7 +108,7 @@ export default defineNuxtConfig({
 })
 ```
 
-Every option has an environment variable equivalent: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`.
+The credentials and client options have environment variable equivalents: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`. `autoEndpoint` has none: routes are registered at build time, so it only takes effect in `nuxt.config.ts`.
 
 ### The Auto-Generated Endpoint
 
@@ -303,7 +303,7 @@ Types come from the package rather than `#imports`, since Nuxt's server auto-imp
 import type { LettermintEmailOptions, MessageStatus } from 'nuxt-lettermint'
 ```
 
-Everything the module defines is exported there, along with the SDK's own generated types.
+Everything the module defines is exported there, along with the SDK types its options and results use: `MessageStatus`, `TlsPolicy`, `SendEmailResponse` and `SendBatchEmailResponse`. For the rest of the SDK's generated types, add `lettermint` to your app's own dependencies.
 
 To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise:
 

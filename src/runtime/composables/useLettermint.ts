@@ -1,16 +1,11 @@
 import { $fetch } from 'ofetch'
 import type { Ref } from 'vue'
 import { ref, useRuntimeConfig } from '#imports'
-import type { LettermintEmailOptions } from '../types'
+import type { LettermintApiResponse, LettermintEmailOptions } from '../types'
 
 export type { LettermintEmailOptions } from '../types'
 
-export interface LettermintResponse {
-  success: boolean
-  messageId?: string
-  status?: string
-  error?: string
-}
+export type LettermintResponse = LettermintApiResponse
 
 export interface UseLettermintOptions {
   /** Required when `autoEndpoint` is off and you post to a route of your own. */
@@ -46,23 +41,37 @@ export function useLettermint(options: UseLettermintOptions = {}): UseLettermint
     error.value = null
 
     try {
-      // A custom endpoint may answer with the SDK result as it is.
-      const response = await $fetch<LettermintResponse & { message_id?: string }>(endpoint, {
+      const raw = await $fetch<unknown>(endpoint, {
         method: 'POST',
         body: message,
       })
 
+      // A page instead of JSON means nothing handled the request: with
+      // autoEndpoint off, Nuxt answers an unregistered route with the app.
+      if (typeof raw === 'string') {
+        const reason = `The endpoint ${endpoint} answered with a page instead of JSON. Is the route registered?`
+        error.value = reason
+
+        return { success: false, error: reason }
+      }
+
+      // A custom endpoint may answer with the SDK result as it is, or with
+      // nothing at all.
+      const response = (raw ?? {}) as LettermintResponse & { message_id?: string }
       const messageId = response.messageId || response.message_id
 
       if (messageId) {
         lastMessageId.value = messageId
       }
 
-      return {
-        ...response,
-        success: response.success ?? true,
-        messageId,
+      const result = { ...response, success: response.success ?? true, messageId }
+
+      if (!result.success) {
+        result.error = result.error || 'Failed to send email'
+        error.value = result.error
       }
+
+      return result
     }
     catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

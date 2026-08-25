@@ -45,6 +45,14 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Bad input the payload mapping refused (metadata, attachment content)
+    if (error instanceof TypeError) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: error.message,
+      })
+    }
+
     throw createError({
       statusCode: 500,
       statusMessage: error instanceof Error && error.message ? error.message : 'Internal server error while sending email',

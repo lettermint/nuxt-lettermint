@@ -81,6 +81,14 @@ describe('/api/lettermint/send', async () => {
     expect(lettermint.requests).toHaveLength(0)
   })
 
+  it('answers 400 for metadata the payload mapping refuses', async () => {
+    const response = await post({ ...message, metadata: { user: { id: 1 } } })
+
+    expect(response.status).toBe(400)
+    expect(response.body.statusMessage).toContain('Metadata value for "user"')
+    expect(lettermint.requests).toHaveLength(0)
+  })
+
   it('surfaces the reason the API rejected a message', async () => {
     lettermint.respondOnceWith({ status: 422, body: { message: 'Sending domain is not verified' } })
 

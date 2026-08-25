@@ -177,6 +177,30 @@ describe('sendEmail payload', () => {
   it('refuses metadata that cannot be represented as a string', async () => {
     await expect(send({ ...base, metadata: { order: { id: 42 } } }))
       .rejects.toThrow('Metadata value for "order" must be a string, number or boolean, received an object.')
+    await expect(send({ ...base, metadata: { cb: () => 'secret' } as unknown as Record<string, unknown> }))
+      .rejects.toThrow('Metadata value for "cb" must be a string, number or boolean, received a function.')
+
+    expect(requests).toHaveLength(0)
+  })
+
+  it('restores a Buffer that was JSON-serialized through the endpoint', async () => {
+    const buffer = Buffer.from('png')
+
+    await send({
+      ...base,
+      attachments: [{ filename: 'logo.png', content: JSON.parse(JSON.stringify(buffer)) }],
+    })
+
+    expect(requests[0]!.body.attachments).toEqual([
+      { filename: 'logo.png', content: buffer.toString('base64') },
+    ])
+  })
+
+  it('refuses attachment content that is neither a string nor a Buffer', async () => {
+    await expect(send({
+      ...base,
+      attachments: [{ filename: 'a.pdf', content: { anything: true } as unknown as string }],
+    })).rejects.toThrow('Attachment content for "a.pdf" must be a base64 string or a Buffer.')
 
     expect(requests).toHaveLength(0)
   })
@@ -253,30 +277,23 @@ describe('sendEmails', () => {
     })
   })
 
-  it('sends metadata values as strings', async () => {
-    await send({
-      ...base,
-      metadata: { orderId: 42, priority: true, note: 'rush', dropped: null },
-    })
+  it('applies the metadata mapping per message', async () => {
+    await sendMany([{ ...base, metadata: { orderId: 42 } }])
 
-    expect(requests[0]!.body.metadata).toEqual({
-      orderId: '42',
-      priority: 'true',
-      note: 'rush',
-    })
-  })
-
-  it('refuses metadata that cannot be represented as a string', async () => {
-    await expect(send({ ...base, metadata: { order: { id: 42 } } }))
-      .rejects.toThrow('Metadata value for "order" must be a string, number or boolean, received an object.')
-
-    expect(requests).toHaveLength(0)
+    expect(requests[0]!.body[0].metadata).toEqual({ orderId: '42' })
   })
 
   it('sends the idempotency key as a header', async () => {
     await sendMany([base], { idempotencyKey: 'batch-1' })
 
     expect(requests[0]!.headers['Idempotency-Key']).toBe('batch-1')
+  })
+
+  it('refuses a per-message idempotency key instead of dropping it', async () => {
+    await expect(sendMany([base, { ...base, idempotencyKey: 'order-42' } as typeof base]))
+      .rejects.toThrow('Message 1 carries an idempotencyKey, but the API applies idempotency to the batch as a whole.')
+
+    expect(requests).toHaveLength(0)
   })
 })
 
