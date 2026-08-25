@@ -298,6 +298,44 @@ await lettermint.email.ping()
 - [Lettermint Documentation](https://docs.lettermint.co)
 - [Lettermint Node.js SDK](https://www.npmjs.com/package/lettermint)
 
+## Contribution
+
+<details>
+  <summary>Local development</summary>
+
+  ```bash
+  # Install dependencies
+  npm install
+
+  # Generate type stubs
+  npm run dev:prepare
+
+  # Develop with the playground
+  npm run dev
+
+  # Build the playground
+  npm run dev:build
+
+  # Run ESLint
+  npm run lint
+
+  # Run Vitest
+  npm run test
+  npm run test:watch
+
+  # Type check the module, the tests and the playground
+  npm run test:types
+  ```
+
+  Releases are cut by semantic-release from the commit history, so commit messages
+  matter: `fix:` releases a patch, `feat:` a minor, and a `BREAKING CHANGE:` footer
+  (or `feat!:`) a major.
+</details>
+
+## Security
+
+Found a vulnerability? Please report it privately — see [SECURITY.md](./SECURITY.md).
+
 ## License
 
 [MIT License](./LICENSE) © 2025 Lettermint
