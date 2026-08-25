@@ -7,6 +7,7 @@ const lettermint = await startMockLettermint()
 
 process.env.NUXT_LETTERMINT_API_KEY = 'test-api-key'
 process.env.NUXT_LETTERMINT_BASE_URL = lettermint.baseUrl
+process.env.NUXT_LETTERMINT_TIMEOUT = '300'
 
 afterAll(() => lettermint.close())
 
@@ -87,6 +88,32 @@ describe('/api/lettermint/send', async () => {
 
     expect(response.status).toBe(422)
     expect(response.body.statusMessage).toBe('Sending domain is not verified')
+  })
+
+  it('answers 400 when the API rejects the request', async () => {
+    lettermint.respondOnceWith({ status: 400, body: { error: 'Unknown route' } })
+
+    const response = await post(message)
+
+    expect(response.status).toBe(400)
+    expect(response.body.statusMessage).toBe('Unknown route')
+  })
+
+  it('passes an upstream server error through', async () => {
+    lettermint.respondOnceWith({ status: 503, body: {} })
+
+    const response = await post(message)
+
+    expect(response.status).toBe(503)
+  })
+
+  it('answers 504 when the API does not respond in time', async () => {
+    lettermint.respondOnceWith({ status: 200, body: {}, delayMs: 900 })
+
+    const response = await post(message)
+
+    expect(response.status).toBe(504)
+    expect(response.body.statusMessage).toContain('timeout')
   })
 
   it('surfaces an error reported under the error key', async () => {

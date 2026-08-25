@@ -273,6 +273,48 @@ export default defineEventHandler(async () => {
 })
 ```
 
+### Error handling
+
+The SDK's error classes are re-exported, prefixed so they do not collide with anything else in your auto-import namespace:
+
+```typescript
+import { sendEmail, LettermintValidationError, LettermintTimeoutError } from '#imports'
+
+try {
+  await sendEmail(message)
+}
+catch (error) {
+  if (error instanceof LettermintValidationError) {
+    // 422: the API refused the message. error.responseBody has the reason
+  }
+  if (error instanceof LettermintTimeoutError) {
+    // the request did not come back within `timeout`
+  }
+}
+```
+
+Available: `LettermintError` (the base class), `LettermintHttpRequestError`, `LettermintValidationError`, `LettermintClientError` and `LettermintTimeoutError`.
+
+To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise:
+
+```typescript
+import { sendEmail, toLettermintFailure } from '#imports'
+
+export default defineEventHandler(async (event) => {
+  try {
+    return await sendEmail(await readBody(event))
+  }
+  catch (error) {
+    const failure = toLettermintFailure(error)
+
+    throw createError({
+      statusCode: failure?.statusCode ?? 500,
+      statusMessage: failure?.message ?? 'Failed to send email',
+    })
+  }
+})
+```
+
 ### Advanced Usage
 
 `useLettermint()` returns the SDK instance itself, for anything the helpers above don't cover:

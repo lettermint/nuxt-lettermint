@@ -1,40 +1,32 @@
 import { defineEventHandler, readBody, createError } from 'h3'
-import { sendEmail, type SendEmailOptions } from '../../utils/lettermint'
+import { sendEmail } from '../../utils/lettermint'
+import { toLettermintFailure } from '../../utils/errors'
+import type { LettermintEmailOptions } from '../../../types'
+
+function assertSendable(body: LettermintEmailOptions | undefined) {
+  const missing = (['from', 'to', 'subject'] as const).find(field => !body?.[field])
+
+  if (missing) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Missing required field: ${missing}`,
+    })
+  }
+
+  if (!body!.text && !body!.html) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Either text or html content is required',
+    })
+  }
+}
 
 export default defineEventHandler(async (event) => {
+  const body = await readBody<LettermintEmailOptions>(event)
+
+  assertSendable(body)
+
   try {
-    const body = await readBody<SendEmailOptions>(event)
-
-    // Validate required fields
-    if (!body.from) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Missing required field: from',
-      })
-    }
-
-    if (!body.to) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Missing required field: to',
-      })
-    }
-
-    if (!body.subject) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Missing required field: subject',
-      })
-    }
-
-    if (!body.text && !body.html) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Either text or html content is required',
-      })
-    }
-
-    // Send the email
     const result = await sendEmail(body)
 
     return {
@@ -44,38 +36,18 @@ export default defineEventHandler(async (event) => {
     }
   }
   catch (error: unknown) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const err = error as any
+    const failure = toLettermintFailure(error)
 
-    // Handle Lettermint SDK errors with responseBody
-    const responseBodyMessage = err.responseBody?.message || err.responseBody?.error
-    if (responseBodyMessage) {
+    if (failure) {
       throw createError({
-        statusCode: err.statusCode || 422,
-        statusMessage: responseBodyMessage,
+        statusCode: failure.statusCode,
+        statusMessage: failure.message,
       })
     }
 
-    // Handle Lettermint API errors
-    if (err.response) {
-      throw createError({
-        statusCode: err.response.status || 500,
-        statusMessage: err.response.data?.message || 'Failed to send email',
-      })
-    }
-
-    // Handle validation errors
-    if (err.statusCode) {
-      throw createError({
-        statusCode: err.statusCode,
-        statusMessage: err.message || 'Validation error',
-      })
-    }
-
-    // Handle other errors
     throw createError({
       statusCode: 500,
-      statusMessage: err.message || 'Internal server error while sending email',
+      statusMessage: error instanceof Error && error.message ? error.message : 'Internal server error while sending email',
     })
   }
 })

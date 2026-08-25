@@ -13,6 +13,8 @@ export interface MockResponse {
   status: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any
+  /** Hold the response back, to trip the client timeout. */
+  delayMs?: number
 }
 
 export interface MockLettermint {
@@ -52,8 +54,10 @@ export async function startMockLettermint(): Promise<MockLettermint> {
 
       const response = queued.shift() || accepted
 
-      res.writeHead(response.status, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify(response.body))
+      setTimeout(() => {
+        res.writeHead(response.status, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(response.body))
+      }, response.delayMs || 0)
     })
   })
 

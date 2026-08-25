@@ -80,6 +80,14 @@ await lettermint.email.from('hello@acme.com').to('user@acme.com').subject('Hello
 
 Concurrent sends could bleed into each other. The module kept one SDK instance, and its email builder holds the message being composed as instance state, so two requests building a message at the same time could overwrite each other's recipients or subject. Each send now builds its own message. `useLettermint()` still returns the shared instance.
 
+## Error responses
+
+`/api/lettermint/send` translates SDK errors more carefully. A request that times out now answers **504** instead of 500, an error the API reports under an `error` key is passed on instead of being flattened to "Failed to send email", and the branch that looked for an axios-shaped `error.response` is gone, since the SDK never produced one.
+
+If you catch errors yourself, the SDK's error classes are now re-exported under prefixed names (`LettermintValidationError`, `LettermintTimeoutError`, and so on), together with `toLettermintFailure()`, which turns an SDK error into a status and a message. Both are documented in the README under [Error handling](./README.md#error-handling). Reaching for `lettermint` in your own `package.json` to get at those classes is no longer necessary.
+
+Note that the SDK ships minified, so `error.name` reads as a mangled class name (`d`, `y`) rather than `ValidationError`. Match on the classes, not on the name.
+
 ## New
 
 ### Batch sending
