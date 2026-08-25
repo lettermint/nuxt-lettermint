@@ -7,6 +7,10 @@ export interface ModuleOptions {
   apiToken?: string
   baseUrl?: string
   timeout?: number
+  /**
+   * Register /api/lettermint/send. The route has no authentication of its own,
+   * so it is off unless you opt in and guard it.
+   */
   autoEndpoint?: boolean
 }
 
@@ -19,7 +23,7 @@ export default defineNuxtModule<ModuleOptions>({
     },
   },
   defaults: {
-    autoEndpoint: true,
+    autoEndpoint: false,
   },
   setup: function (options, nuxt) {
     const resolver = createResolver(import.meta.url)
@@ -36,9 +40,14 @@ export default defineNuxtModule<ModuleOptions>({
       runtimeConfig,
     ) as typeof runtimeConfig
 
+    nuxt.options.runtimeConfig.public.lettermint = defu(
+      nuxt.options.runtimeConfig.public.lettermint || {} as Record<string, unknown>,
+      { autoEndpoint: options.autoEndpoint === true },
+    ) as { autoEndpoint: boolean }
+
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
 
-    if (options.autoEndpoint !== false) {
+    if (options.autoEndpoint === true) {
       addServerHandler({
         route: '/api/lettermint/send',
         handler: resolver.resolve('./runtime/server/api/lettermint/send.post'),
@@ -62,6 +71,8 @@ declare module '@nuxt/schema' {
     }
   }
   interface PublicRuntimeConfig {
-    lettermint?: Record<string, never>
+    lettermint: {
+      autoEndpoint: boolean
+    }
   }
 }

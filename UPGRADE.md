@@ -1,8 +1,33 @@
 # Upgrade to v2
 
-v2 moves the module onto v2 of the [Lettermint Node.js SDK](https://github.com/lettermint/lettermint-node). The module's own API — the `lettermint` config block, the `/api/lettermint/send` endpoint, `useLettermint()` and `sendEmail()` — is unchanged, so most projects can upgrade without touching code. Read the two behaviour changes below before you do.
+v2 moves the module onto v2 of the [Lettermint Node.js SDK](https://github.com/lettermint/lettermint-node), and takes the chance to close a hole in the defaults.
+
+The signatures you already use — the `lettermint` config block, `useLettermint()`, `sendEmail()` — have not changed. Projects that send from server code can upgrade without touching anything. Projects that send **from the browser** need one config line, described first below.
 
 ## Behaviour changes
+
+### `/api/lettermint/send` is no longer registered by default
+
+`autoEndpoint` now defaults to `false`. The route has no authentication of its own, so every app that installed the module was publishing an endpoint that anyone who could reach the site could send mail through — from your domain, against your quota. That is now something you switch on deliberately:
+
+```ts
+// nuxt.config.ts
+lettermint: {
+  autoEndpoint: true,
+}
+```
+
+This only affects sending **from the browser**. Server-side `sendEmail()` and `sendEmails()` never went through the endpoint and are unaffected.
+
+If you do switch it on, guard it — a session check, an API key, a rate limit — and keep `from` and `to` out of the request body where you can. The README has an example under [The Auto-Generated Endpoint](./README.md#the-auto-generated-endpoint).
+
+If you already send through a route of your own, point the composable at it:
+
+```ts
+const { send } = useLettermint({ endpoint: '/api/contact' })
+```
+
+Without either, `send()` returns `{ success: false, error }` explaining which of the two you need, and posts nothing. Before v2 it would post to the missing route, get Nuxt's HTML fallback back with a 200, and hand you that as if it were a result.
 
 ### Arrays of recipients now reach everyone
 

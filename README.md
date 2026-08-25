@@ -96,8 +96,8 @@ export default defineNuxtConfig({
     // Team API token, only needed for useLettermintApi(). Server-side only.
     apiToken: 'your-team-api-token',
 
-    // Enable/disable the auto-generated /api/lettermint/send endpoint (default: true)
-    // Set to false if you want to create your own custom endpoints
+    // Register /api/lettermint/send (default: false). The route has no
+    // authentication of its own — see "The auto-generated endpoint" below
     autoEndpoint: true,
 
     // Override the API base URL and request timeout in ms
@@ -109,42 +109,62 @@ export default defineNuxtConfig({
 
 Every option has an environment variable equivalent: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`.
 
-### Disabling the Auto-Generated Endpoint
+### The Auto-Generated Endpoint
 
-By default, the module creates an endpoint at `/api/lettermint/send` for sending emails. If you prefer to create your own custom endpoints, you can disable this behavior:
+The module can register an endpoint at `/api/lettermint/send`, which the client-side `useLettermint()` composable posts to. It is **off by default**: the route has no authentication of its own, so anyone who can reach your site could send mail through it — from your domain, against your quota.
+
+Turn it on when you want it, and put something in front of it:
 
 ```typescript
 // nuxt.config.ts
 export default defineNuxtConfig({
   modules: ['nuxt-lettermint'],
   lettermint: {
-    autoEndpoint: false
+    autoEndpoint: true
   }
 })
 ```
 
-**Note:** When you disable the auto-generated endpoint:
-- You can still send emails directly from your server code using the `sendEmail` function
-- The client-side `useLettermint()` composable will not work unless you create a custom endpoint at `/api/lettermint/send`
-- Only create a custom endpoint if you need specific routing, additional logic, or client-side email sending:
+```typescript
+// server/middleware/lettermint-guard.ts
+export default defineEventHandler(async (event) => {
+  if (!event.path.startsWith('/api/lettermint/send')) return
+
+  if (!event.context.user) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+})
+```
+
+Be careful about what you let the browser decide. An endpoint that takes `from`, `to` and `html` straight from the request body lets any visitor who gets past your check send whatever they like from your domain. For a contact form, fix the sender and the recipient server-side and accept only the message:
 
 ```typescript
-// server/api/custom-send.post.ts (optional)
+// server/api/contact.post.ts
 import { sendEmail } from '#imports'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  // Add your custom logic here
-  return await sendEmail(body)
+  const { message } = await readBody(event)
+
+  return await sendEmail({
+    from: 'website@example.com',
+    to: 'support@example.com',
+    subject: 'New contact form message',
+    text: message,
+  })
 })
 ```
+
+Point the composable at your own route with `useLettermint({ endpoint: '/api/contact' })`. Server-side `sendEmail()` and `sendEmails()` work regardless of this setting — they never go through the endpoint.
 
 ## Usage
 
 ### Client-Side
 
+Sending from the browser goes through a server route: either the built-in one (`autoEndpoint: true`) or your own. See [The Auto-Generated Endpoint](#the-auto-generated-endpoint) before you expose either.
+
 ```vue
 <script setup>
+// Posts to /api/lettermint/send, or pass your own: useLettermint({ endpoint: '/api/contact' })
 const { send, sending, error } = useLettermint()
 
 await send({

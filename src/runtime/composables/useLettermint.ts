@@ -1,6 +1,6 @@
 import { $fetch } from 'ofetch'
 import type { Ref } from 'vue'
-import { ref } from '#imports'
+import { ref, useRuntimeConfig } from '#imports'
 import type { LettermintEmailOptions } from '../types'
 
 export type { LettermintEmailOptions } from '../types'
@@ -12,6 +12,14 @@ export interface LettermintResponse {
   error?: string
 }
 
+export interface UseLettermintOptions {
+  /**
+   * Endpoint to post to. Required when `autoEndpoint` is off and you send
+   * through a route of your own.
+   */
+  endpoint?: string
+}
+
 export interface UseLettermintReturn {
   send: (options: LettermintEmailOptions) => Promise<LettermintResponse>
   sending: Ref<boolean>
@@ -19,19 +27,31 @@ export interface UseLettermintReturn {
   lastMessageId: Ref<string | null>
 }
 
-export function useLettermint(): UseLettermintReturn {
+const DEFAULT_ENDPOINT = '/api/lettermint/send'
+
+export function useLettermint(options: UseLettermintOptions = {}): UseLettermintReturn {
   const sending = ref(false)
   const error = ref<string | null>(null)
   const lastMessageId = ref<string | null>(null)
 
-  const send = async (options: LettermintEmailOptions): Promise<LettermintResponse> => {
+  const endpoint = options.endpoint || DEFAULT_ENDPOINT
+  const config = useRuntimeConfig()
+
+  const send = async (message: LettermintEmailOptions): Promise<LettermintResponse> => {
+    if (!options.endpoint && !config.public.lettermint?.autoEndpoint) {
+      const reason = `No endpoint to send through: ${DEFAULT_ENDPOINT} is not registered. Set \`lettermint.autoEndpoint: true\` in nuxt.config.ts, or pass your own route: useLettermint({ endpoint: '/api/send' }).`
+      error.value = reason
+
+      return { success: false, error: reason }
+    }
+
     sending.value = true
     error.value = null
 
     try {
-      const response = await $fetch('/api/lettermint/send', {
+      const response = await $fetch(endpoint, {
         method: 'POST',
-        body: options,
+        body: message,
       })
 
       if (response.messageId) {

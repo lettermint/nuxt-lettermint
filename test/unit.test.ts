@@ -2,9 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
 
 const post = vi.hoisted(() => vi.fn())
+const publicConfig = vi.hoisted(() => ({ autoEndpoint: true }))
 
 vi.mock('ofetch', () => ({ $fetch: post }))
-vi.mock('#imports', () => ({ ref }))
+vi.mock('#imports', () => ({
+  ref,
+  useRuntimeConfig: () => ({ public: { lettermint: publicConfig } }),
+}))
 
 const message = {
   from: 'hello@acme.com',
@@ -13,13 +17,14 @@ const message = {
   text: 'Hi',
 }
 
-async function useLettermint() {
+async function useLettermint(options?: { endpoint?: string }) {
   const composable = await import('../src/runtime/composables/useLettermint')
-  return composable.useLettermint()
+  return composable.useLettermint(options)
 }
 
 beforeEach(() => {
   post.mockReset()
+  publicConfig.autoEndpoint = true
 })
 
 describe('useLettermint composable', () => {
@@ -67,6 +72,28 @@ describe('useLettermint composable', () => {
     expect(response).toEqual({ success: false, error: 'Missing required field: from' })
     expect(error.value).toBe('Missing required field: from')
     expect(sending.value).toBe(false)
+  })
+
+  it('explains itself when no endpoint is registered', async () => {
+    publicConfig.autoEndpoint = false
+    const { send, error } = await useLettermint()
+
+    const response = await send(message)
+
+    expect(post).not.toHaveBeenCalled()
+    expect(response.success).toBe(false)
+    expect(response.error).toContain('autoEndpoint: true')
+    expect(error.value).toBe(response.error)
+  })
+
+  it('posts to a custom endpoint when one is given', async () => {
+    publicConfig.autoEndpoint = false
+    post.mockResolvedValue({ success: true, messageId: 'msg_4' })
+    const { send } = await useLettermint({ endpoint: '/api/contact' })
+
+    await send(message)
+
+    expect(post).toHaveBeenCalledWith('/api/contact', { method: 'POST', body: message })
   })
 
   it('falls back to a generic message when the error carries none', async () => {

@@ -17,13 +17,13 @@ const message = {
   text: 'Sent through a custom endpoint',
 }
 
-describe('autoEndpoint: false', async () => {
+describe('without autoEndpoint', async () => {
   await setup({
     rootDir: fileURLToPath(new URL('./fixtures/without-endpoint', import.meta.url)),
     server: true,
   })
 
-  it('does not register /api/lettermint/send', async () => {
+  it('does not register /api/lettermint/send by default', async () => {
     const response = await fetch('/api/lettermint/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
