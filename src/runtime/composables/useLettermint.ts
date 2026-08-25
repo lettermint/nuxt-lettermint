@@ -13,10 +13,7 @@ export interface LettermintResponse {
 }
 
 export interface UseLettermintOptions {
-  /**
-   * Endpoint to post to. Required when `autoEndpoint` is off and you send
-   * through a route of your own.
-   */
+  /** Required when `autoEndpoint` is off and you post to a route of your own. */
   endpoint?: string
 }
 
@@ -49,8 +46,7 @@ export function useLettermint(options: UseLettermintOptions = {}): UseLettermint
     error.value = null
 
     try {
-      // A custom endpoint may hand back the SDK result as it is, rather than
-      // the shape the module's own endpoint answers with.
+      // A custom endpoint may answer with the SDK result as it is.
       const response = await $fetch<LettermintResponse & { message_id?: string }>(endpoint, {
         method: 'POST',
         body: message,

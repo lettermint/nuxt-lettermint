@@ -38,11 +38,10 @@ function messageFromBody(body: unknown): string | null {
 const TIMEOUT_MESSAGE = /^Request timeout after \d+ms$/
 
 /**
- * `instanceof` is exact, but it compares class identity, so it fails when the
- * dependency tree holds a second copy of the SDK. Falling back to `error.name`
- * is not an option: the SDK ships minified, which leaves every error named
- * after its mangled class (`d`, `y`, ...). `responseBody` is what the SDK puts
- * on its request errors and nothing else in the Nuxt stack sets.
+ * `instanceof` fails when the tree holds a second copy of the SDK, and
+ * `error.name` is no fallback: the SDK ships minified, so every error is named
+ * after its mangled class (`d`, `y`). `responseBody` is what its request errors
+ * carry and nothing else in the Nuxt stack sets.
  */
 export function isLettermintError(error: unknown): boolean {
   if (error instanceof LettermintError) return true
@@ -54,10 +53,6 @@ export function isLettermintError(error: unknown): boolean {
   return 'responseBody' in record || TIMEOUT_MESSAGE.test(record.message as string)
 }
 
-/**
- * Translate an SDK error into the status and message to answer a request with.
- * Returns null for anything the SDK did not raise.
- */
 export function toLettermintFailure(error: unknown): LettermintFailure | null {
   if (!isLettermintError(error)) return null
 

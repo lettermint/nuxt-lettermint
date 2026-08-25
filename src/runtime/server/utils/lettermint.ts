@@ -41,12 +41,8 @@ function getApiToken(): string {
   return config.lettermint.apiToken
 }
 
-/**
- * The SDK, with its email builder. A new instance per call: the builder holds
- * the message being composed, so a shared one would let concurrent requests
- * overwrite each other. Hold on to the result for one send, not for the
- * lifetime of the server.
- */
+// A new instance per call: the builder holds the message being composed, so a
+// shared one would let concurrent requests overwrite each other.
 export function useLettermint(): Lettermint {
   return new Lettermint({
     ...getClientConfig(),
@@ -54,7 +50,6 @@ export function useLettermint(): Lettermint {
   })
 }
 
-/** An email builder of its own, ready to compose and send one message. */
 export function useLettermintEmail(): EmailEndpoint {
   return createEmail()
 }
@@ -79,8 +74,7 @@ function isTagList(tags: string[] | LettermintTag[]): tags is LettermintTag[] {
   return typeof tags[0] === 'object'
 }
 
-// The API takes metadata as strings. Numbers and booleans are converted;
-// anything else would only stringify into something the receiver cannot read.
+// The API takes metadata as strings.
 function toStringMap(values: Record<string, unknown>): Record<string, string> {
   const entries: Array<[string, string]> = []
 
@@ -170,7 +164,6 @@ export async function sendEmail(options: LettermintEmailOptions): Promise<SendEm
   return await email.send()
 }
 
-// One request, one result per message, in the order they were passed.
 export async function sendEmails(
   messages: LettermintEmailOptions[],
   options: { idempotencyKey?: string } = {},

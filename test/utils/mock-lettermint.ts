@@ -13,14 +13,12 @@ export interface MockResponse {
   status: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any
-  /** Hold the response back, to trip the client timeout. */
   delayMs?: number
 }
 
 export interface MockLettermint {
   baseUrl: string
   requests: MockRequest[]
-  /** Response for the next request only. */
   respondOnceWith: (response: MockResponse) => void
   close: () => Promise<void>
 }
@@ -30,10 +28,8 @@ const accepted: MockResponse = {
   body: { message_id: 'msg_mock', status: 'pending' },
 }
 
-/**
- * Stands in for the Lettermint API so the server tests can assert what the
- * module put on the wire without an API key or network access.
- */
+// Stands in for the Lettermint API, so the tests can assert what the module put
+// on the wire without an API key or network access.
 export async function startMockLettermint(): Promise<MockLettermint> {
   const requests: MockRequest[] = []
   const queued: MockResponse[] = []
