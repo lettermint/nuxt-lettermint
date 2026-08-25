@@ -1,8 +1,6 @@
 name: release
 
-# Manual only. Switch to `push: branches: [main]` to release on every merge,
-# but first tag the last published version (v1.0.3) so semantic-release knows
-# where the history starts.
+# Manual only. Switch to `push: branches: [main]` to release on every merge.
 on:
   workflow_dispatch:
 
