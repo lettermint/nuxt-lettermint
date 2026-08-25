@@ -5,6 +5,7 @@ export interface MockRequest {
   method: string
   path: string
   token?: string
+  authorization?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any
 }
@@ -45,8 +46,15 @@ export async function startMockLettermint(): Promise<MockLettermint> {
         method: req.method || '',
         path: req.url || '',
         token: req.headers['x-lettermint-token'] as string | undefined,
+        authorization: req.headers.authorization,
         body: raw ? JSON.parse(raw) : undefined,
       })
+
+      if (req.url?.endsWith('/ping')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' })
+        res.end('pong\n')
+        return
+      }
 
       const response = queued.shift() || accepted
 

@@ -6,6 +6,7 @@ import { startMockLettermint } from './utils/mock-lettermint'
 const lettermint = await startMockLettermint()
 
 process.env.NUXT_LETTERMINT_API_KEY = 'test-api-key'
+process.env.NUXT_LETTERMINT_API_TOKEN = 'test-api-token'
 process.env.NUXT_LETTERMINT_BASE_URL = lettermint.baseUrl
 
 afterAll(() => lettermint.close())
@@ -13,8 +14,11 @@ afterAll(() => lettermint.close())
 interface FixtureResult {
   success: boolean
   error?: string
+  ping?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   result?: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  team?: any
 }
 
 describe('server utilities', async () => {
@@ -76,6 +80,47 @@ describe('server utilities', async () => {
       { to: ['first@testing.lettermint.co'], subject: 'First' },
       { to: ['second@testing.lettermint.co', 'third@testing.lettermint.co'], subject: 'Second' },
     ])
+  })
+
+  it('sends through a builder of its own', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-builder')
+
+    expect(response.error).toBeUndefined()
+    expect(lettermint.requests[0]!.body).toMatchObject({
+      subject: 'Test Builder',
+      to: ['ok@testing.lettermint.co'],
+    })
+  })
+
+  it('reaches the team API with its own token', async () => {
+    const response = await $fetch<FixtureResult>('/api/test-api-client')
+
+    expect(response.error).toBeUndefined()
+    expect(response.ping).toBe('pong')
+    expect(lettermint.requests[0]).toMatchObject({
+      method: 'GET',
+      path: '/v1/team',
+      authorization: 'Bearer test-api-token',
+    })
+    expect(lettermint.requests[0]!.token).toBeUndefined()
+  })
+
+  it('hands back errors as the classes it documents', async () => {
+    lettermint.respondOnceWith({ status: 422, body: { error: 'Sender domain is not verified' } })
+
+    const response = await $fetch<{
+      threw: boolean
+      recognised: boolean
+      isValidationError: boolean
+      failure: { statusCode: number, message: string }
+    }>('/api/test-error-classes')
+
+    expect(response).toEqual({
+      threw: true,
+      recognised: true,
+      isValidationError: true,
+      failure: { statusCode: 422, message: 'Sender domain is not verified' },
+    })
   })
 
   it('exposes the SDK builder through useLettermint', async () => {
