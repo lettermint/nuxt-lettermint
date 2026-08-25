@@ -57,9 +57,3 @@ export interface LettermintApiResponse {
   status?: string
   error?: string
 }
-
-export interface LettermintError {
-  statusCode: number
-  statusMessage: string
-  data?: unknown
-}

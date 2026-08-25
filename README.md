@@ -297,6 +297,14 @@ catch (error) {
 
 Available: `LettermintError` (the base class), `LettermintHttpRequestError`, `LettermintValidationError`, `LettermintClientError` and `LettermintTimeoutError`.
 
+Types come from the package rather than `#imports`, since Nuxt's server auto-imports carry values only:
+
+```typescript
+import type { LettermintEmailOptions, MessageStatus } from 'nuxt-lettermint'
+```
+
+Everything the module defines is exported there, along with the SDK's own generated types.
+
 To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise:
 
 ```typescript

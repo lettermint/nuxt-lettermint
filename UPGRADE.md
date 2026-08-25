@@ -74,6 +74,8 @@ await lettermint.email.from('hello@acme.com').to('user@acme.com').subject('Hello
 
 ## TypeScript
 
+`LettermintError` is now the SDK's error class rather than an interface of our own describing a status and a message. Nothing used the interface, and keeping both under one name made the package export ambiguous. For a status and a message, call `toLettermintFailure()`.
+
 `LettermintEmailAddress` is gone. It described a `{ email, name }` recipient, which no version of the module ever accepted: recipients have always been strings, optionally in `Name <address>` form. Write `'Acme <hello@acme.com>'` instead.
 
 `LettermintSendResponse.status` used to be `'pending' | 'sent' | 'failed'`. It now uses the SDK's `MessageStatus`, which covers all fourteen statuses the API can return (`queued`, `delivered`, `opened`, `hard_bounced`, and so on). An exhaustive `switch` or a comparison against a status that no longer exists will fail to compile until you widen it.
@@ -86,7 +88,7 @@ Concurrent sends could bleed into each other. The module kept one SDK instance, 
 
 `/api/lettermint/send` translates SDK errors more carefully. A request that times out now answers **504** instead of 500, an error the API reports under an `error` key is passed on instead of being flattened to "Failed to send email", and the branch that looked for an axios-shaped `error.response` is gone, since the SDK never produced one.
 
-If you catch errors yourself, the SDK's error classes are now re-exported under prefixed names (`LettermintValidationError`, `LettermintTimeoutError`, and so on), together with `toLettermintFailure()`, which turns an SDK error into a status and a message. Both are documented in the README under [Error handling](./README.md#error-handling). Reaching for `lettermint` in your own `package.json` to get at those classes is no longer necessary.
+If you catch errors yourself, the SDK's error classes are now re-exported under prefixed names (`LettermintValidationError`, `LettermintTimeoutError`, and so on), together with `toLettermintFailure()`, which turns an SDK error into a status and a message. Both are documented in the README under [Error handling](./README.md#error-handling). Types are exported from the package itself (`import type { LettermintEmailOptions } from 'nuxt-lettermint'`), because Nuxt's server auto-imports carry values and not types. Reaching for `lettermint` in your own `package.json` to get at those classes is no longer necessary.
 
 Note that the SDK ships minified, so `error.name` reads as a mangled class name (`d`, `y`) rather than `ValidationError`. Match on the classes, not on the name.
 
