@@ -1,4 +1,17 @@
-import type { MessageStatus, TlsPolicy } from 'lettermint'
+import type {
+  MessageStatus as SdkMessageStatus,
+  SendBatchEmailResponse as SdkSendBatchEmailResponse,
+  SendEmailResponse as SdkSendEmailResponse,
+  TlsPolicy as SdkTlsPolicy,
+} from 'lettermint'
+
+// Aliases rather than `export type * from 'lettermint'`: the declaration
+// bundler drops the `type` modifier, which would advertise SDK classes this
+// package does not export at runtime.
+export type MessageStatus = SdkMessageStatus
+export type TlsPolicy = SdkTlsPolicy
+export type SendEmailResponse = SdkSendEmailResponse
+export type SendBatchEmailResponse = SdkSendBatchEmailResponse
 
 export interface LettermintModuleOptions {
   apiKey?: string

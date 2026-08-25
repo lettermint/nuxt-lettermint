@@ -8,8 +8,6 @@ export {
   ValidationError as LettermintValidationError,
 }
 
-export type * from 'lettermint'
-
 export interface LettermintFailure {
   statusCode: number
   message: string

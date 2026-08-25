@@ -4,7 +4,6 @@ import { defu } from 'defu'
 // Server auto-imports carry values, not types, so the public types are reached
 // through the package itself: import type { ... } from 'nuxt-lettermint'.
 export type * from './runtime/types'
-export type * from 'lettermint'
 
 export interface ModuleOptions {
   apiKey?: string
