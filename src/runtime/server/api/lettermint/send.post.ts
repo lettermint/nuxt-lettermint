@@ -1,22 +1,18 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { sendEmail } from '../../utils/lettermint'
-import { toLettermintFailure } from '../../utils/errors'
+import { toLettermintFailure, LettermintPayloadError } from '../../utils/errors'
 import type { LettermintEmailOptions } from '../../../types'
 
 function assertSendable(body: LettermintEmailOptions | undefined) {
-  const missing = (['from', 'to', 'subject'] as const).find(field => !body?.[field])
+  const missing = (['from', 'to', 'subject'] as const).find((field) => {
+    const value = body?.[field]
+    return !value || (Array.isArray(value) && value.length === 0)
+  })
 
   if (missing) {
     throw createError({
       statusCode: 400,
-      statusMessage: `Missing required field: ${missing}`,
-    })
-  }
-
-  if (!body!.text && !body!.html) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Either text or html content is required',
+      message: `Missing required field: ${missing}`,
     })
   }
 }
@@ -33,29 +29,51 @@ export default defineEventHandler(async (event) => {
       success: true,
       messageId: result.message_id,
       status: result.status,
+      ...result.scheduled_at && { scheduledAt: result.scheduled_at },
     }
   }
   catch (error: unknown) {
+    if (error instanceof LettermintPayloadError) {
+      throw createError({
+        statusCode: 400,
+        message: error.message,
+      })
+    }
+
     const failure = toLettermintFailure(error)
+
+    // Upstream 401/403 means the configured key is wrong: the server's fault,
+    // not the caller's. Replaying it verbatim trips app-level auth handling.
+    if (failure && (failure.statusCode === 401 || failure.statusCode === 403)) {
+      console.error('[nuxt-lettermint] The Lettermint API rejected the configured credentials:', failure.message)
+
+      throw createError({
+        statusCode: 502,
+        message: 'The email service rejected the server credentials',
+      })
+    }
 
     if (failure) {
       throw createError({
         statusCode: failure.statusCode,
-        statusMessage: failure.message,
+        message: failure.message,
+        data: failure.data,
       })
     }
 
-    // Bad input the payload mapping refused (metadata, attachment content)
-    if (error instanceof TypeError) {
+    console.error('[nuxt-lettermint] Sending failed:', error)
+
+    // undici reports network failures (DNS, connection refused) this way.
+    if (error instanceof TypeError && error.message === 'fetch failed') {
       throw createError({
-        statusCode: 400,
-        statusMessage: error.message,
+        statusCode: 502,
+        message: 'Could not reach the email service',
       })
     }
 
     throw createError({
       statusCode: 500,
-      statusMessage: error instanceof Error && error.message ? error.message : 'Internal server error while sending email',
+      message: 'Internal server error while sending email',
     })
   }
 })

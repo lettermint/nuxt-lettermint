@@ -1,29 +1,19 @@
-import { defineNuxtModule, addPlugin, createResolver, addServerHandler, addImportsDir, addServerImportsDir } from '@nuxt/kit'
+import { defineNuxtModule, createResolver, addServerHandler, addImportsDir, addServerImportsDir } from '@nuxt/kit'
 import { defu } from 'defu'
+import type { LettermintModuleOptions } from './runtime/types'
 
 // Server auto-imports carry values, not types, so the public types are reached
 // through the package itself: import type { ... } from 'nuxt-lettermint'.
 export type * from './runtime/types'
 
-export interface ModuleOptions {
-  apiKey?: string
-  /** Team API token. Separate from the sending key, and server-side only. */
-  apiToken?: string
-  baseUrl?: string
-  timeout?: number
-  /**
-   * Register /api/lettermint/send. The route has no authentication of its own,
-   * so it is off unless you opt in and guard it.
-   */
-  autoEndpoint?: boolean
-}
+export type ModuleOptions = LettermintModuleOptions
 
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'nuxt-lettermint',
     configKey: 'lettermint',
     compatibility: {
-      nuxt: '>=3.0.0',
+      nuxt: '>=4.0.0',
     },
   },
   defaults: {
@@ -54,13 +44,12 @@ export default defineNuxtModule<ModuleOptions>({
     if (options.autoEndpoint === true) {
       addServerHandler({
         route: '/api/lettermint/send',
+        method: 'post',
         handler: resolver.resolve('./runtime/server/api/lettermint/send.post'),
       })
     }
 
     addImportsDir(resolver.resolve('./runtime/composables'))
-
-    addPlugin(resolver.resolve('./runtime/plugin'))
   },
 })
 

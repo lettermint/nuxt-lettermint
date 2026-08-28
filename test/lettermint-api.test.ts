@@ -17,6 +17,8 @@ interface CapturedRequest {
   url: string
   method: string
   headers: Record<string, string>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body?: any
 }
 
 let requests: CapturedRequest[] = []
@@ -36,6 +38,7 @@ beforeEach(() => {
       url: String(url),
       method: String(init.method),
       headers: (init.headers || {}) as Record<string, string>,
+      ...init.body !== undefined && { body: JSON.parse(String(init.body)) },
     })
 
     return {
@@ -114,9 +117,26 @@ describe('useLettermintApi', () => {
     await expect(useApi()).rejects.toThrow('NUXT_LETTERMINT_API_TOKEN')
   })
 
-  it('reuses one client across calls', async () => {
+  it('reads the configuration on every call instead of caching it', async () => {
     const { useLettermintApi } = await import('../src/runtime/server/utils/lettermint')
 
-    expect(useLettermintApi()).toBe(useLettermintApi())
+    expect(useLettermintApi()).not.toBe(useLettermintApi())
+  })
+
+  it('reschedules and cancels a scheduled message', async () => {
+    const api = await useApi()
+
+    await api.messages.reschedule('msg_1', { scheduled_at: '2026-09-02T09:00:00.000Z' })
+    await api.messages.cancel('msg_1')
+
+    expect(requests[0]).toMatchObject({
+      method: 'PATCH',
+      url: 'https://api.lettermint.co/v1/messages/msg_1',
+      body: { scheduled_at: '2026-09-02T09:00:00.000Z' },
+    })
+    expect(requests[1]).toMatchObject({
+      method: 'POST',
+      url: 'https://api.lettermint.co/v1/messages/msg_1/cancel',
+    })
   })
 })

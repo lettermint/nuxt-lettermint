@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { SendEmailOptions } from '../src/runtime/server/utils/lettermint'
+import type { LettermintTag, SendEmailOptions } from '../src/runtime/server/utils/lettermint'
 
 const runtimeConfig = vi.hoisted(() => ({ apiKey: 'test-api-key', apiToken: '', baseUrl: '', timeout: 0 }))
 
@@ -33,10 +33,15 @@ function mockFetch(delayMs = 0) {
 
     if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs))
 
+    // The batch endpoint answers with one result per message.
+    const body = String(url).endsWith('/send/batch')
+      ? JSON.parse(String(init.body)).map((_: unknown, index: number) => ({ message_id: `msg_${index}`, status: 'pending' }))
+      : { message_id: 'msg_1', status: 'pending' }
+
     return {
       ok: true,
       status: 200,
-      json: async () => ({ message_id: 'msg_1', status: 'pending' }),
+      json: async () => body,
     }
   })
 }
@@ -46,7 +51,7 @@ async function send(options: SendEmailOptions) {
   return sendEmail(options)
 }
 
-async function sendMany(messages: SendEmailOptions[], options?: { idempotencyKey?: string }) {
+async function sendMany(messages: Array<Omit<SendEmailOptions, 'idempotencyKey'> & { idempotencyKey?: never }>, options?: { idempotencyKey?: string }) {
   const { sendEmails } = await import('../src/runtime/server/utils/lettermint')
   return sendEmails(messages, options)
 }
@@ -115,18 +120,39 @@ describe('sendEmail payload', () => {
     ])
   })
 
-  it('maps a string tag list onto the single tag field', async () => {
-    await send({ ...base, tags: ['campaign-123'] })
+  it('sends a plain label through the tag field', async () => {
+    await send({ ...base, tag: 'campaign-123' })
 
     expect(requests[0]!.body.tag).toBe('campaign-123')
     expect(requests[0]!.body.tags).toBeUndefined()
   })
 
-  it('maps key/value tags onto the tags field', async () => {
-    await send({ ...base, tags: [{ name: 'campaign', value: '123' }] })
+  it('sends every key/value tag, alongside a plain label', async () => {
+    await send({
+      ...base,
+      tag: 'campaign-123',
+      tags: [{ name: 'campaign', value: '123' }, { name: 'cohort', value: 'beta' }],
+    })
 
-    expect(requests[0]!.body.tags).toEqual([{ name: 'campaign', value: '123' }])
-    expect(requests[0]!.body.tag).toBeUndefined()
+    expect(requests[0]!.body.tag).toBe('campaign-123')
+    expect(requests[0]!.body.tags).toEqual([
+      { name: 'campaign', value: '123' },
+      { name: 'cohort', value: 'beta' },
+    ])
+  })
+
+  it('refuses v1-style string entries in tags instead of dropping them', async () => {
+    await expect(send({ ...base, tags: ['campaign-123'] as unknown as LettermintTag[] }))
+      .rejects.toThrow('Tag 0 must be a { name, value } pair of strings. For a plain label, use the "tag" option.')
+
+    expect(requests).toHaveLength(0)
+  })
+
+  it('refuses a message without text or html', async () => {
+    await expect(send({ from: base.from, to: base.to, subject: base.subject }))
+      .rejects.toThrow('Either text or html content is required')
+
+    expect(requests).toHaveLength(0)
   })
 
   it('maps settings onto the payload', async () => {
@@ -175,9 +201,9 @@ describe('sendEmail payload', () => {
   })
 
   it('refuses metadata that cannot be represented as a string', async () => {
-    await expect(send({ ...base, metadata: { order: { id: 42 } } }))
+    await expect(send({ ...base, metadata: { order: { id: 42 } } as unknown as Record<string, string> }))
       .rejects.toThrow('Metadata value for "order" must be a string, number or boolean, received an object.')
-    await expect(send({ ...base, metadata: { cb: () => 'secret' } as unknown as Record<string, unknown> }))
+    await expect(send({ ...base, metadata: { cb: () => 'secret' } as unknown as Record<string, string> }))
       .rejects.toThrow('Metadata value for "cb" must be a string, number or boolean, received a function.')
 
     expect(requests).toHaveLength(0)
@@ -209,6 +235,25 @@ describe('sendEmail payload', () => {
     await send({ ...base, idempotencyKey: 'order-42' })
 
     expect(requests[0]!.headers['Idempotency-Key']).toBe('order-42')
+  })
+
+  it('passes a scheduled delivery time through', async () => {
+    await send({ ...base, scheduledAt: '2026-09-01T09:00:00.000Z' })
+
+    expect(requests[0]!.body.scheduled_at).toBe('2026-09-01T09:00:00.000Z')
+  })
+
+  it('converts a Date scheduled delivery time to an ISO string', async () => {
+    await send({ ...base, scheduledAt: new Date('2026-09-01T09:00:00Z') })
+
+    expect(requests[0]!.body.scheduled_at).toBe('2026-09-01T09:00:00.000Z')
+  })
+
+  it('refuses a scheduled delivery time that is not a date', async () => {
+    await expect(send({ ...base, scheduledAt: 'tomorrow-ish' }))
+      .rejects.toThrow('scheduledAt must be a Date or an ISO 8601 string, received "tomorrow-ish".')
+
+    expect(requests).toHaveLength(0)
   })
 
   it('authenticates with the configured api key', async () => {
@@ -257,7 +302,10 @@ describe('sendEmails', () => {
       { from: base.from, to: ['one@acme.com'], subject: 'First', text: 'Hi' },
       { from: base.from, to: ['two@acme.com', 'three@acme.com'], subject: 'Second', text: 'Hi' },
     ])
-    expect(result).toEqual({ message_id: 'msg_1', status: 'pending' })
+    expect(result).toEqual([
+      { message_id: 'msg_0', status: 'pending' },
+      { message_id: 'msg_1', status: 'pending' },
+    ])
   })
 
   it('applies the same option mapping as a single send', async () => {
@@ -283,6 +331,16 @@ describe('sendEmails', () => {
     expect(requests[0]!.body[0].metadata).toEqual({ orderId: '42' })
   })
 
+  it('schedules each message on its own time', async () => {
+    await sendMany([
+      { ...base, scheduledAt: new Date('2026-09-01T09:00:00Z') },
+      base,
+    ])
+
+    expect(requests[0]!.body[0].scheduled_at).toBe('2026-09-01T09:00:00.000Z')
+    expect(requests[0]!.body[1].scheduled_at).toBeUndefined()
+  })
+
   it('sends the idempotency key as a header', async () => {
     await sendMany([base], { idempotencyKey: 'batch-1' })
 
@@ -298,7 +356,7 @@ describe('sendEmails', () => {
 })
 
 describe('client configuration', () => {
-  it('uses a configured base url and timeout', async () => {
+  it('uses a configured base url', async () => {
     runtimeConfig.baseUrl = 'https://mail.internal.acme.com/v1'
 
     await send(base)

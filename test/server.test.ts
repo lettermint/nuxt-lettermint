@@ -66,6 +66,7 @@ describe('server utilities', async () => {
       headers: { 'X-Custom-Header': 'custom-value' },
       metadata: { userId: '12345', campaign: 'test-campaign' },
       tag: 'test',
+      tags: [{ name: 'suite', value: 'full-options' }],
       attachments: [{ filename: 'test.txt', content: 'Test attachment content' }],
     })
   })
@@ -119,7 +120,11 @@ describe('server utilities', async () => {
       threw: true,
       recognised: true,
       isValidationError: true,
-      failure: { statusCode: 422, message: 'Sender domain is not verified' },
+      failure: {
+        statusCode: 422,
+        message: 'Sender domain is not verified',
+        data: { error: 'Sender domain is not verified' },
+      },
     })
   })
 

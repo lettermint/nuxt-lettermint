@@ -9,6 +9,7 @@ describe('toLettermintFailure', () => {
     expect(toLettermintFailure(error)).toEqual({
       statusCode: 422,
       message: 'The from field is invalid',
+      data: { message: 'The from field is invalid' },
     })
   })
 
@@ -18,6 +19,7 @@ describe('toLettermintFailure', () => {
     expect(toLettermintFailure(error)).toEqual({
       statusCode: 400,
       message: 'Unknown route',
+      data: { error: 'Unknown route' },
     })
   })
 
@@ -27,6 +29,7 @@ describe('toLettermintFailure', () => {
     expect(toLettermintFailure(error)).toEqual({
       statusCode: 503,
       message: 'HTTP error 503 Service Unavailable',
+      data: {},
     })
   })
 
@@ -58,6 +61,7 @@ describe('toLettermintFailure', () => {
     expect(toLettermintFailure(foreign)).toEqual({
       statusCode: 422,
       message: 'The to field is required',
+      data: { error: 'The to field is required' },
     })
   })
 

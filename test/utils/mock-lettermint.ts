@@ -56,7 +56,12 @@ export async function startMockLettermint(): Promise<MockLettermint> {
         return
       }
 
-      const response = queued.shift() || accepted
+      // The batch endpoint answers with one result per message.
+      const fallback = req.url?.endsWith('/send/batch')
+        ? { status: 200, body: (requests.at(-1)?.body as unknown[]).map((_, index) => ({ message_id: `msg_mock_${index}`, status: 'pending' })) }
+        : accepted
+
+      const response = queued.shift() || fallback
 
       setTimeout(() => {
         res.writeHead(response.status, { 'Content-Type': 'application/json' })

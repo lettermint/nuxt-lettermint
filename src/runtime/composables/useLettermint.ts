@@ -1,6 +1,5 @@
-import { $fetch } from 'ofetch'
 import type { Ref } from 'vue'
-import { ref, useRuntimeConfig } from '#imports'
+import { $fetch, ref, useRuntimeConfig } from '#imports'
 import type { LettermintApiResponse, LettermintEmailOptions } from '../types'
 
 export type { LettermintEmailOptions } from '../types'
@@ -8,7 +7,7 @@ export type { LettermintEmailOptions } from '../types'
 export type LettermintResponse = LettermintApiResponse
 
 export interface UseLettermintOptions {
-  /** Required when `autoEndpoint` is off and you post to a route of your own. */
+  /** Route to post to. Required when `autoEndpoint` is off. */
   endpoint?: string
 }
 
@@ -29,12 +28,14 @@ export function useLettermint(options: UseLettermintOptions = {}): UseLettermint
   const endpoint = options.endpoint || DEFAULT_ENDPOINT
   const config = useRuntimeConfig()
 
+  const fail = (reason: string): LettermintResponse => {
+    error.value = reason
+    return { success: false, error: reason }
+  }
+
   const send = async (message: LettermintEmailOptions): Promise<LettermintResponse> => {
     if (!options.endpoint && !config.public.lettermint?.autoEndpoint) {
-      const reason = `No endpoint to send through: ${DEFAULT_ENDPOINT} is not registered. Set \`lettermint.autoEndpoint: true\` in nuxt.config.ts, or pass your own route: useLettermint({ endpoint: '/api/send' }).`
-      error.value = reason
-
-      return { success: false, error: reason }
+      return fail(`No endpoint to send through: ${DEFAULT_ENDPOINT} is not registered. Set \`lettermint.autoEndpoint: true\` in nuxt.config.ts, or pass your own route: useLettermint({ endpoint: '/api/send' }).`)
     }
 
     sending.value = true
@@ -49,39 +50,34 @@ export function useLettermint(options: UseLettermintOptions = {}): UseLettermint
       // A page instead of JSON means nothing handled the request: with
       // autoEndpoint off, Nuxt answers an unregistered route with the app.
       if (typeof raw === 'string') {
-        const reason = `The endpoint ${endpoint} answered with a page instead of JSON. Is the route registered?`
-        error.value = reason
-
-        return { success: false, error: reason }
+        return fail(`The endpoint ${endpoint} answered with a page instead of JSON. Is the route registered?`)
       }
 
       // A custom endpoint may answer with the SDK result as it is, or with
-      // nothing at all.
-      const response = (raw ?? {}) as LettermintResponse & { message_id?: string }
-      const messageId = response.messageId || response.message_id
+      // nothing at all: a 2xx without an error counts as sent.
+      const response = (raw ?? {}) as Record<string, unknown>
+      const reason = typeof response.error === 'string' && response.error ? response.error : null
+      const messageId = (response.messageId || response.message_id) as string | undefined
 
       if (messageId) {
         lastMessageId.value = messageId
       }
 
-      const result = { ...response, success: response.success ?? true, messageId }
-
-      if (!result.success) {
-        result.error = result.error || 'Failed to send email'
-        error.value = result.error
+      if (response.success === false || (response.success === undefined && reason)) {
+        return fail(reason || 'Failed to send email')
       }
 
-      return result
+      return {
+        success: true,
+        messageId,
+        ...typeof response.status === 'string' && { status: response.status },
+        ...typeof response.scheduledAt === 'string' && { scheduledAt: response.scheduledAt },
+      }
     }
     catch (err: unknown) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const errorMessage = (err as any)?.data?.statusMessage || (err as any)?.message || 'Failed to send email'
-      error.value = errorMessage
-
-      return {
-        success: false,
-        error: errorMessage,
-      }
+      const data = (err as any)?.data
+      return fail(data?.message || data?.statusMessage || (err as Error)?.message || 'Failed to send email')
     }
     finally {
       sending.value = false

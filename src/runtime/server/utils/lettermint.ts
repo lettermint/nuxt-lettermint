@@ -1,6 +1,7 @@
 import { Lettermint } from 'lettermint'
 import type { ApiClient, EmailEndpoint, SendBatchMailRequest } from 'lettermint'
 import { useRuntimeConfig } from '#imports'
+import { LettermintPayloadError } from './errors'
 import type { LettermintAttachment, LettermintEmailOptions, LettermintTag, SendBatchEmailResponse, SendEmailResponse } from '../../types'
 
 export type { LettermintEmailOptions, LettermintSettings, LettermintTag } from '../../types'
@@ -9,8 +10,6 @@ export type { LettermintEmailOptions, LettermintSettings, LettermintTag } from '
 export type SendEmailOptions = LettermintEmailOptions
 
 type BatchMessage = SendBatchMailRequest[number]
-
-let apiInstance: ApiClient | null = null
 
 function getApiKey(): string {
   const config = useRuntimeConfig()
@@ -55,11 +54,7 @@ export function useLettermintEmail(): EmailEndpoint {
 }
 
 export function useLettermintApi(): ApiClient {
-  if (!apiInstance) {
-    apiInstance = Lettermint.api(getApiToken(), getClientConfig())
-  }
-
-  return apiInstance
+  return Lettermint.api(getApiToken(), getClientConfig())
 }
 
 function createEmail(): EmailEndpoint {
@@ -70,8 +65,15 @@ function toArray(value: string | string[]): string[] {
   return Array.isArray(value) ? value : [value]
 }
 
-function isTagList(tags: string[] | LettermintTag[]): tags is LettermintTag[] {
-  return typeof tags[0] === 'object'
+function toTagList(tags: LettermintTag[]): LettermintTag[] {
+  // The endpoint takes untyped JSON, so v1-style string entries can still arrive.
+  const invalid = tags.findIndex(tag => typeof tag?.name !== 'string' || typeof tag?.value !== 'string')
+
+  if (invalid !== -1) {
+    throw new LettermintPayloadError(`Tag ${invalid} must be a { name, value } pair of strings. For a plain label, use the "tag" option.`)
+  }
+
+  return tags.map(({ name, value }) => ({ name, value }))
 }
 
 // The API takes metadata as strings.
@@ -83,7 +85,7 @@ function toStringMap(values: Record<string, unknown>): Record<string, string> {
 
     if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
       const kind = Array.isArray(value) ? 'an array' : typeof value === 'object' ? 'an object' : `a ${typeof value}`
-      throw new TypeError(`Metadata value for "${key}" must be a string, number or boolean, received ${kind}.`)
+      throw new LettermintPayloadError(`Metadata value for "${key}" must be a string, number or boolean, received ${kind}.`)
     }
 
     entries.push([key, String(value)])
@@ -105,10 +107,24 @@ function toAttachmentContent(attachment: LettermintAttachment): string {
     return Buffer.from(serialized.data as number[]).toString('base64')
   }
 
-  throw new TypeError(`Attachment content for "${attachment.filename}" must be a base64 string or a Buffer.`)
+  throw new LettermintPayloadError(`Attachment content for "${attachment.filename}" must be a base64 string or a Buffer.`)
+}
+
+function toScheduledAt(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    throw new LettermintPayloadError(`scheduledAt must be a Date or an ISO 8601 string, received "${String(value)}".`)
+  }
+
+  return date.toISOString()
 }
 
 function toPayload(options: LettermintEmailOptions): BatchMessage {
+  if (!options.text && !options.html) {
+    throw new LettermintPayloadError('Either text or html content is required')
+  }
+
   const payload: BatchMessage = {
     from: options.from,
     to: toArray(options.to),
@@ -123,15 +139,10 @@ function toPayload(options: LettermintEmailOptions): BatchMessage {
   if (options.headers) payload.headers = options.headers
   if (options.metadata) payload.metadata = toStringMap(options.metadata)
   if (options.route) payload.route = options.route
+  if (options.scheduledAt) payload.scheduled_at = toScheduledAt(options.scheduledAt)
 
-  if (options.tags?.length) {
-    if (isTagList(options.tags)) {
-      payload.tags = options.tags
-    }
-    else {
-      payload.tag = options.tags[0] as string
-    }
-  }
+  if (options.tag) payload.tag = options.tag
+  if (options.tags?.length) payload.tags = toTagList(options.tags)
 
   if (options.settings) {
     payload.settings = {
@@ -172,6 +183,7 @@ export async function sendEmail(options: LettermintEmailOptions): Promise<SendEm
   if (payload.tags) email = email.tags(payload.tags)
   if (payload.settings) email = email.settings(payload.settings)
   if (payload.route) email = email.route(payload.route)
+  if (payload.scheduled_at) email = email.scheduledAt(payload.scheduled_at)
   if (options.idempotencyKey) email = email.idempotencyKey(options.idempotencyKey)
 
   payload.attachments?.forEach((attachment) => {
@@ -182,12 +194,12 @@ export async function sendEmail(options: LettermintEmailOptions): Promise<SendEm
 }
 
 export async function sendEmails(
-  messages: Array<Omit<LettermintEmailOptions, 'idempotencyKey'>>,
+  messages: Array<Omit<LettermintEmailOptions, 'idempotencyKey'> & { idempotencyKey?: never }>,
   options: { idempotencyKey?: string } = {},
 ): Promise<SendBatchEmailResponse> {
-  const keyed = messages.findIndex(message => (message as LettermintEmailOptions).idempotencyKey)
+  const keyed = messages.findIndex(message => message.idempotencyKey)
   if (keyed !== -1) {
-    throw new TypeError(`Message ${keyed} carries an idempotencyKey, but the API applies idempotency to the batch as a whole. Pass it as sendEmails(messages, { idempotencyKey }).`)
+    throw new LettermintPayloadError(`Message ${keyed} carries an idempotencyKey, but the API applies idempotency to the batch as a whole. Pass it as sendEmails(messages, { idempotencyKey }).`)
   }
 
   let email = createEmail()

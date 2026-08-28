@@ -23,7 +23,7 @@ Upgrading from v1? See [UPGRADE.md](./UPGRADE.md).
 - 📦 Batch sending
 - 🛠️ Full SDK and team API access
 - ⚙️ Configurable via env or `nuxt.config.ts`
-- 🎯 Compatible with Nuxt 3 and Nuxt 4
+- 🎯 Built for Nuxt 4
 
 ## Quick Setup
 
@@ -157,7 +157,7 @@ export default defineEventHandler(async (event) => {
 })
 ```
 
-Point the composable at your own route with `useLettermint({ endpoint: '/api/contact' })`. Server-side `sendEmail()` and `sendEmails()` work regardless of this setting, since they never go through the endpoint.
+Point the composable at your own route with `useLettermint({ endpoint: '/api/contact' })`. The composable accepts whatever the route answers: the module's own shape, the raw SDK result, or an empty 2xx. A response carrying an `error`, or `success: false`, is reported as a failure. Server-side `sendEmail()` and `sendEmails()` work regardless of this setting, since they never go through the endpoint.
 
 ## Usage
 
@@ -191,7 +191,7 @@ export default defineEventHandler(async () => {
     to: 'ok@testing.lettermint.co',
     subject: 'Welcome',
     html: '<h1>Welcome!</h1>',
-    tags: ['welcome']
+    tag: 'welcome'
   })
 })
 ```
@@ -211,12 +211,14 @@ export default defineEventHandler(async () => {
 | `bcc` | `string \| string[]` | |
 | `replyTo` | `string \| string[]` | |
 | `headers` | `Record<string, string>` | Custom headers. |
-| `metadata` | `Record<string, unknown>` | Returned on the message and in webhooks. |
-| `tags` | `string[] \| { name, value }[]` | A single tag (a `string[]` uses its first entry), or key/value tags. |
+| `metadata` | `Record<string, unknown>` | Returned on the message and in webhooks. Values must be strings, numbers or booleans; they are sent as strings. |
+| `tag` | `string` | A plain label for the message. |
+| `tags` | `{ name, value }[]` | Key/value tags. |
 | `attachments` | `Array<{ filename, content, contentType?, contentId? }>` | `content` is base64 or a `Buffer`. Set `contentId` to reference the file from the HTML body. |
 | `settings` | `{ trackOpens?, trackClicks?, tls? }` | Per-message overrides. `tls` is `opportunistic` or `enforced`. |
 | `route` | `string` | Send through a specific route instead of the project default. |
 | `idempotencyKey` | `string` | Reuse across retries so the message is only delivered once. |
+| `scheduledAt` | `string \| Date` | Deliver at this time instead of immediately. A `Date` or an ISO 8601 string, at most 30 days ahead. |
 
 ```typescript
 await sendEmail({
@@ -230,6 +232,18 @@ await sendEmail({
   ],
   idempotencyKey: `invoice-${invoice.id}`,
 })
+```
+
+### Scheduled sending
+
+Set `scheduledAt` to hand the message to Lettermint now and have it delivered later, up to 30 days ahead. The response comes back with `status: 'scheduled'` and the delivery time. A scheduled message can be moved or cancelled through the [Team API](#team-api) until it is released:
+
+```typescript
+const { message_id } = await sendEmail({ ...message, scheduledAt: '2026-09-01T09:00:00Z' })
+
+const api = useLettermintApi()
+await api.messages.reschedule(message_id, { scheduled_at: '2026-09-02T09:00:00Z' })
+await api.messages.cancel(message_id)
 ```
 
 ### Batch Sending
@@ -267,7 +281,7 @@ export default defineEventHandler(async () => {
   const api = useLettermintApi()
 
   const [stats, suppressions] = await Promise.all([
-    api.stats.retrieve({ start: '2026-01-01', end: '2026-01-31' }),
+    api.stats.retrieve({ from: '2026-01-01', to: '2026-01-31' }),
     api.suppressions.list(),
   ])
 
@@ -295,7 +309,7 @@ catch (error) {
 }
 ```
 
-Available: `LettermintError` (the base class), `LettermintHttpRequestError`, `LettermintValidationError`, `LettermintClientError` and `LettermintTimeoutError`.
+Available: `LettermintError` (the base class), `LettermintHttpRequestError`, `LettermintValidationError`, `LettermintClientError` and `LettermintTimeoutError`. The module adds `LettermintPayloadError`, thrown before anything goes on the wire when an option cannot be mapped onto the API (bad metadata, tags, attachment content, or `scheduledAt`).
 
 Types come from the package rather than `#imports`, since Nuxt's server auto-imports carry values only:
 
@@ -303,7 +317,7 @@ Types come from the package rather than `#imports`, since Nuxt's server auto-imp
 import type { LettermintEmailOptions, MessageStatus } from 'nuxt-lettermint'
 ```
 
-Everything the module defines is exported there, along with the SDK types its options and results use: `MessageStatus`, `TlsPolicy`, `SendEmailResponse` and `SendBatchEmailResponse`. For the rest of the SDK's generated types, add `lettermint` to your app's own dependencies.
+Everything the module defines is exported there, including `LettermintFailure` (the return type of `toLettermintFailure()`), along with the SDK types its options and results use: `MessageStatus`, `TlsPolicy`, `SendEmailResponse` and `SendBatchEmailResponse`. For the rest of the SDK's generated types, add `lettermint` to your app's own dependencies.
 
 To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise:
 
@@ -319,7 +333,8 @@ export default defineEventHandler(async (event) => {
 
     throw createError({
       statusCode: failure?.statusCode ?? 500,
-      statusMessage: failure?.message ?? 'Failed to send email',
+      message: failure?.message ?? 'Failed to send email',
+      data: failure?.data,
     })
   }
 })

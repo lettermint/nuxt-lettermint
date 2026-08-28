@@ -35,6 +35,13 @@ describe('without autoEndpoint', async () => {
     expect(lettermint.requests).toHaveLength(0)
   })
 
+  it('tells the composable the endpoint is off through public config', async () => {
+    const page = await (await fetch('/')).text()
+
+    expect(page).toContain('auto-endpoint: false')
+    expect(page).not.toContain('test-api-key')
+  })
+
   it('still lets a custom endpoint send through sendEmail', async () => {
     const response = await fetch('/api/custom-send', {
       method: 'POST',

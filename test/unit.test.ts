@@ -4,8 +4,8 @@ import { ref } from 'vue'
 const post = vi.hoisted(() => vi.fn())
 const publicConfig = vi.hoisted(() => ({ autoEndpoint: true }))
 
-vi.mock('ofetch', () => ({ $fetch: post }))
 vi.mock('#imports', () => ({
+  $fetch: post,
   ref,
   useRuntimeConfig: () => ({ public: { lettermint: publicConfig } }),
 }))
@@ -81,9 +81,11 @@ describe('useLettermint composable', () => {
     const response = await send(message)
 
     expect(post).not.toHaveBeenCalled()
-    expect(response.success).toBe(false)
-    expect(response.error).toContain('autoEndpoint: true')
-    expect(error.value).toBe(response.error)
+    expect(response).toEqual({
+      success: false,
+      error: expect.stringContaining('autoEndpoint: true'),
+    })
+    expect(error.value).toContain('autoEndpoint: true')
   })
 
   it('posts to a custom endpoint when one is given', async () => {
@@ -112,9 +114,11 @@ describe('useLettermint composable', () => {
 
     const response = await send(message)
 
-    expect(response.success).toBe(false)
-    expect(response.error).toContain('answered with a page instead of JSON')
-    expect(error.value).toBe(response.error)
+    expect(response).toEqual({
+      success: false,
+      error: expect.stringContaining('answered with a page instead of JSON'),
+    })
+    expect(error.value).toContain('answered with a page instead of JSON')
   })
 
   it('mirrors a passed-through failure into the error ref', async () => {
@@ -127,14 +131,51 @@ describe('useLettermint composable', () => {
     expect(error.value).toBe('rate limited')
   })
 
+  it('treats a 200 that carries an error as a failure', async () => {
+    post.mockResolvedValue({ error: 'domain not verified' })
+    const { send, error } = await useLettermint({ endpoint: '/api/contact' })
+
+    const response = await send(message)
+
+    expect(response).toEqual({ success: false, error: 'domain not verified' })
+    expect(error.value).toBe('domain not verified')
+  })
+
+  it('passes the status and delivery time of a scheduled send through', async () => {
+    post.mockResolvedValue({
+      success: true,
+      messageId: 'msg_6',
+      status: 'scheduled',
+      scheduledAt: '2026-09-01T09:00:00.000Z',
+    })
+    const { send } = await useLettermint()
+
+    const response = await send(message)
+
+    expect(response).toEqual({
+      success: true,
+      messageId: 'msg_6',
+      status: 'scheduled',
+      scheduledAt: '2026-09-01T09:00:00.000Z',
+    })
+  })
+
+  it('prefers the detailed message of a thrown endpoint error', async () => {
+    post.mockRejectedValue({ data: { statusMessage: 'Server Error', message: 'scheduledAt must be a Date or an ISO 8601 string' } })
+    const { send, error } = await useLettermint()
+
+    await send(message)
+
+    expect(error.value).toBe('scheduledAt must be a Date or an ISO 8601 string')
+  })
+
   it('accepts the raw SDK result from a custom endpoint', async () => {
     post.mockResolvedValue({ message_id: 'msg_5', status: 'pending' })
     const { send, lastMessageId } = await useLettermint({ endpoint: '/api/contact' })
 
     const response = await send(message)
 
-    expect(response.success).toBe(true)
-    expect(response.messageId).toBe('msg_5')
+    expect(response).toMatchObject({ success: true, messageId: 'msg_5' })
     expect(lastMessageId.value).toBe('msg_5')
   })
 

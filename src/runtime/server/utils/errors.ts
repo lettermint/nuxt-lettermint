@@ -8,9 +8,18 @@ export {
   ValidationError as LettermintValidationError,
 }
 
+/**
+ * Bad input the payload mapping refused, before anything went on the wire.
+ * A subclass so the endpoint can answer 400 without catching every TypeError:
+ * undici throws plain TypeErrors for network failures.
+ */
+export class LettermintPayloadError extends TypeError {}
+
 export interface LettermintFailure {
   statusCode: number
   message: string
+  /** The parsed API response body, when the SDK carried one. */
+  data?: unknown
 }
 
 const TIMEOUT_STATUS = 504
@@ -65,5 +74,9 @@ export function toLettermintFailure(error: unknown): LettermintFailure | null {
     || (typeof record.message === 'string' && record.message ? record.message : null)
     || 'Failed to send email'
 
-  return { statusCode, message }
+  return {
+    statusCode,
+    message,
+    ...record.responseBody !== undefined && { data: record.responseBody },
+  }
 }
