@@ -69,7 +69,7 @@ export interface LettermintEmailOptions {
   settings?: LettermintSettings
   route?: string
   idempotencyKey?: string
-  /** Deliver at this time instead of immediately, as a Date or ISO 8601 string. The API accepts at most 30 days ahead. */
+  /** Deliver at this time instead of immediately, as a Date or an ISO 8601 string with a timezone. The API accepts at most 30 days ahead. */
   scheduledAt?: string | Date
 }
 

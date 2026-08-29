@@ -170,13 +170,38 @@ describe('useLettermint composable', () => {
   })
 
   it('accepts the raw SDK result from a custom endpoint', async () => {
-    post.mockResolvedValue({ message_id: 'msg_5', status: 'pending' })
+    post.mockResolvedValue({ message_id: 'msg_5', status: 'scheduled', scheduled_at: '2026-09-01T09:00:00.000Z' })
     const { send, lastMessageId } = await useLettermint({ endpoint: '/api/contact' })
 
     const response = await send(message)
 
-    expect(response).toMatchObject({ success: true, messageId: 'msg_5' })
+    expect(response).toMatchObject({
+      success: true,
+      messageId: 'msg_5',
+      status: 'scheduled',
+      scheduledAt: '2026-09-01T09:00:00.000Z',
+    })
     expect(lastMessageId.value).toBe('msg_5')
+  })
+
+  it('does not record the message id of a failed send', async () => {
+    post.mockResolvedValue({ success: false, error: 'suppressed', messageId: 'msg_7' })
+    const { send, lastMessageId } = await useLettermint()
+
+    const response = await send(message)
+
+    expect(response.success).toBe(false)
+    expect(lastMessageId.value).toBeNull()
+  })
+
+  it('ignores a message id that is not a string', async () => {
+    post.mockResolvedValue({ success: true, messageId: 12345 })
+    const { send, lastMessageId } = await useLettermint()
+
+    const response = await send(message)
+
+    expect(response).toMatchObject({ success: true, messageId: undefined })
+    expect(lastMessageId.value).toBeNull()
   })
 
   it('falls back to a generic message when the error carries none', async () => {

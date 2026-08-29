@@ -110,11 +110,14 @@ function toAttachmentContent(attachment: LettermintAttachment): string {
   throw new LettermintPayloadError(`Attachment content for "${attachment.filename}" must be a base64 string or a Buffer.`)
 }
 
+// A zoneless string would be read in the server's timezone.
+const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/
+
 function toScheduledAt(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value)
 
-  if (Number.isNaN(date.getTime())) {
-    throw new LettermintPayloadError(`scheduledAt must be a Date or an ISO 8601 string, received "${String(value)}".`)
+  if ((typeof value === 'string' && !ISO_WITH_ZONE.test(value)) || Number.isNaN(date.getTime())) {
+    throw new LettermintPayloadError(`scheduledAt must be a Date or an ISO 8601 string with a timezone, such as "2026-09-01T09:00:00Z", received "${String(value)}".`)
   }
 
   return date.toISOString()

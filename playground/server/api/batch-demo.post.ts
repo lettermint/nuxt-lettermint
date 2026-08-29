@@ -4,7 +4,7 @@ import { sendEmails, toLettermintFailure } from '#imports'
 
 export default defineEventHandler(async () => {
   const from = process.env.PLAYGROUND_FROM_EMAIL || 'demo@lettermint.co'
-  const inAnHour = new Date(Date.now() + 60 * 60 * 1000)
+  const inAnHour = new Date((Math.floor(Date.now() / 1000) + 3600) * 1000)
 
   try {
     const results = await sendEmails(
@@ -44,7 +44,7 @@ export default defineEventHandler(async () => {
     console.error('[playground] Batch send failed:', error)
     throw createError({
       statusCode: 500,
-      message: error instanceof Error ? error.message : 'Failed to send the batch',
+      message: 'Failed to send the batch',
     })
   }
 })

@@ -39,7 +39,7 @@ export default defineEventHandler(async () => {
     console.error('[playground] Sending failed:', error)
     throw createError({
       statusCode: 500,
-      message: error instanceof Error ? error.message : 'Failed to send email from server',
+      message: 'Failed to send email from server',
     })
   }
 })

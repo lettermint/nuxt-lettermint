@@ -62,6 +62,10 @@ tags: [
 
 A v1-style `tags: string[]` is refused with an error rather than silently reduced to one entry (v1 sent only the last entry; nothing else was ever delivered). Move the label you want into `tag`.
 
+### `metadata` values must be primitives
+
+v1 forwarded whatever `metadata` held, objects included, and the API stored what it could. v2 sends string, number and boolean values as strings, drops `null` and `undefined` entries, and refuses object or array values with an error instead of sending garbage. Flatten nested data before passing it.
+
 ## If you use the SDK directly
 
 The module now depends on `lettermint@^2`. If your app also has `lettermint` in its own `package.json`, upgrade it in the same step and follow the [SDK upgrade guide](https://github.com/lettermint/lettermint-node/blob/main/UPGRADE.md): v2 changes how clients are constructed and how tokens are configured.
@@ -126,7 +130,7 @@ Server-side only: the token covers your whole team.
 
 | Option | Description |
 | --- | --- |
-| `scheduledAt` | Deliver at this time instead of immediately, as a `Date` or ISO 8601 string, at most 30 days ahead (SDK 2.4.0). |
+| `scheduledAt` | Deliver at this time instead of immediately, as a `Date` or an ISO 8601 string with a timezone, at most 30 days ahead (SDK 2.4.0). |
 | `settings` | `trackOpens`, `trackClicks` and the `tls` policy, per message. |
 | `route` | Send through a specific route instead of the project default. |
 | `idempotencyKey` | Reuse across retries of the same send so the message is only delivered once. |

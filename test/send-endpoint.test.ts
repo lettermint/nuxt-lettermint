@@ -51,12 +51,23 @@ describe('send endpoint error classification', () => {
     expect(console.error).toHaveBeenCalled()
   })
 
-  it('answers 502 when the email service cannot be reached', async () => {
-    sendEmail.mockRejectedValue(new TypeError('fetch failed'))
+  it.each(['fetch failed', 'terminated'])('answers 502 when the email service cannot be reached (%s)', async (reason) => {
+    sendEmail.mockRejectedValue(new TypeError(reason))
 
     await expect(post()).rejects.toMatchObject({
       statusCode: 502,
       message: 'Could not reach the email service',
+      data: { cause: reason },
+    })
+    expect(console.error).toHaveBeenCalled()
+  })
+
+  it('answers 502 when the email service answers with something other than JSON', async () => {
+    sendEmail.mockRejectedValue(new SyntaxError('Unexpected token \'<\''))
+
+    await expect(post()).rejects.toMatchObject({
+      statusCode: 502,
+      message: 'The email service answered with an invalid response',
     })
     expect(console.error).toHaveBeenCalled()
   })

@@ -25,7 +25,7 @@ describe('/api/lettermint/send', async () => {
   })
 
   beforeEach(() => {
-    lettermint.requests.length = 0
+    lettermint.reset()
   })
 
   async function post(body: Record<string, unknown>) {

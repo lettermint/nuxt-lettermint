@@ -28,7 +28,7 @@ describe('server utilities', async () => {
   })
 
   beforeEach(() => {
-    lettermint.requests.length = 0
+    lettermint.reset()
   })
 
   it('sends an email with sendEmail', async () => {

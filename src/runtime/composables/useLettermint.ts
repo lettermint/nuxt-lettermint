@@ -57,21 +57,23 @@ export function useLettermint(options: UseLettermintOptions = {}): UseLettermint
       // nothing at all: a 2xx without an error counts as sent.
       const response = (raw ?? {}) as Record<string, unknown>
       const reason = typeof response.error === 'string' && response.error ? response.error : null
-      const messageId = (response.messageId || response.message_id) as string | undefined
-
-      if (messageId) {
-        lastMessageId.value = messageId
-      }
+      const id = response.messageId ?? response.message_id
+      const messageId = typeof id === 'string' && id ? id : undefined
+      const scheduledAt = response.scheduledAt ?? response.scheduled_at
 
       if (response.success === false || (response.success === undefined && reason)) {
         return fail(reason || 'Failed to send email')
+      }
+
+      if (messageId) {
+        lastMessageId.value = messageId
       }
 
       return {
         success: true,
         messageId,
         ...typeof response.status === 'string' && { status: response.status },
-        ...typeof response.scheduledAt === 'string' && { scheduledAt: response.scheduledAt },
+        ...typeof scheduledAt === 'string' && { scheduledAt },
       }
     }
     catch (err: unknown) {

@@ -34,10 +34,11 @@ export default defineNuxtModule<ModuleOptions>({
       runtimeConfig,
     ) as typeof runtimeConfig
 
-    nuxt.options.runtimeConfig.public.lettermint = defu(
-      nuxt.options.runtimeConfig.public.lettermint || {} as Record<string, unknown>,
-      { autoEndpoint: options.autoEndpoint === true },
-    ) as { autoEndpoint: boolean }
+    // Mirrors the build-time route registration, so nothing may override it.
+    nuxt.options.runtimeConfig.public.lettermint = {
+      ...nuxt.options.runtimeConfig.public.lettermint as Record<string, unknown> | undefined,
+      autoEndpoint: options.autoEndpoint === true,
+    }
 
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
 

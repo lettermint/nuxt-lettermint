@@ -249,11 +249,17 @@ describe('sendEmail payload', () => {
     expect(requests[0]!.body.scheduled_at).toBe('2026-09-01T09:00:00.000Z')
   })
 
-  it('refuses a scheduled delivery time that is not a date', async () => {
-    await expect(send({ ...base, scheduledAt: 'tomorrow-ish' }))
-      .rejects.toThrow('scheduledAt must be a Date or an ISO 8601 string, received "tomorrow-ish".')
+  it.each(['tomorrow-ish', '2026-09-01T09:00', '0'])('refuses the scheduled delivery time "%s"', async (scheduledAt) => {
+    await expect(send({ ...base, scheduledAt }))
+      .rejects.toThrow(`scheduledAt must be a Date or an ISO 8601 string with a timezone, such as "2026-09-01T09:00:00Z", received "${scheduledAt}".`)
 
     expect(requests).toHaveLength(0)
+  })
+
+  it('accepts a scheduled delivery time with an offset timezone', async () => {
+    await send({ ...base, scheduledAt: '2026-09-01T09:00:00+02:00' })
+
+    expect(requests[0]!.body.scheduled_at).toBe('2026-09-01T07:00:00.000Z')
   })
 
   it('authenticates with the configured api key', async () => {

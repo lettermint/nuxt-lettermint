@@ -21,6 +21,7 @@ export interface MockLettermint {
   baseUrl: string
   requests: MockRequest[]
   respondOnceWith: (response: MockResponse) => void
+  reset: () => void
   close: () => Promise<void>
 }
 
@@ -79,6 +80,10 @@ export async function startMockLettermint(): Promise<MockLettermint> {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
     respondOnceWith: response => queued.push(response),
+    reset: () => {
+      requests.length = 0
+      queued.length = 0
+    },
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => error ? reject(error) : resolve())
     }),

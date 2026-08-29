@@ -63,11 +63,21 @@ export default defineEventHandler(async (event) => {
 
     console.error('[nuxt-lettermint] Sending failed:', error)
 
-    // undici reports network failures (DNS, connection refused) this way.
-    if (error instanceof TypeError && error.message === 'fetch failed') {
+    // undici's network failures; the SyntaxError is the SDK json-parsing a
+    // non-JSON error body, e.g. a proxy's HTML outage page.
+    if (error instanceof TypeError && (error.message === 'fetch failed' || error.message === 'terminated')) {
       throw createError({
         statusCode: 502,
         message: 'Could not reach the email service',
+        data: { cause: error.message },
+      })
+    }
+
+    if (error instanceof SyntaxError) {
+      throw createError({
+        statusCode: 502,
+        message: 'The email service answered with an invalid response',
+        data: { cause: error.message },
       })
     }
 

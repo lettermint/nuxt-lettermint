@@ -108,7 +108,7 @@ export default defineNuxtConfig({
 })
 ```
 
-The credentials and client options have environment variable equivalents: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`. `autoEndpoint` has none: routes are registered at build time, so it only takes effect in `nuxt.config.ts`.
+The credentials and client options have environment variable equivalents: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`. `autoEndpoint` has none: routes are registered at build time, so it only takes effect in `nuxt.config.ts`. In particular, a `NUXT_PUBLIC_LETTERMINT_AUTO_ENDPOINT` environment variable cannot enable or disable the route.
 
 ### The Auto-Generated Endpoint
 
@@ -218,7 +218,7 @@ export default defineEventHandler(async () => {
 | `settings` | `{ trackOpens?, trackClicks?, tls? }` | Per-message overrides. `tls` is `opportunistic` or `enforced`. |
 | `route` | `string` | Send through a specific route instead of the project default. |
 | `idempotencyKey` | `string` | Reuse across retries so the message is only delivered once. |
-| `scheduledAt` | `string \| Date` | Deliver at this time instead of immediately. A `Date` or an ISO 8601 string, at most 30 days ahead. |
+| `scheduledAt` | `string \| Date` | Deliver at this time instead of immediately. A `Date` or an ISO 8601 string with a timezone, at most 30 days ahead. |
 
 ```typescript
 await sendEmail({
