@@ -13,10 +13,12 @@
     <div v-if="lastMessageId">
       Message ID: {{ lastMessageId }}
     </div>
+    <p>auto-endpoint: {{ config.public.lettermint.autoEndpoint }}</p>
   </div>
 </template>
 
 <script setup>
+const config = useRuntimeConfig()
 const { send, sending, error, lastMessageId } = useLettermint()
 
 async function sendEmail() {

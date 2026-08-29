@@ -1,17 +1,22 @@
-import { defineEventHandler } from 'h3'
-// @ts-expect-error - auto-imported from module
-import { sendEmail } from '#imports'
+import { defineEventHandler, createError } from 'h3'
+// @ts-expect-error server auto-imports are not typed in the app context
+import { sendEmail, toLettermintFailure } from '#imports'
+// In an app these come from the package: import type { ... } from 'nuxt-lettermint'
+import type { LettermintEmailOptions } from '../../../src/runtime/types'
+
+const demo: LettermintEmailOptions = {
+  from: process.env.PLAYGROUND_FROM_EMAIL || 'demo@lettermint.co',
+  to: 'ok@testing.lettermint.co',
+  subject: 'Server-side Email from Nuxt Lettermint',
+  text: 'This email was sent directly from the server using the Lettermint SDK.',
+  html: '<h2>Server-side Email</h2><p>This email was sent directly from the server using the <strong>Lettermint SDK</strong>.</p>',
+  tag: 'nuxt',
+  tags: [{ name: 'source', value: 'playground' }],
+}
 
 export default defineEventHandler(async () => {
   try {
-    const result = await sendEmail({
-      from: 'demo@lettermint.co',
-      to: 'ok@testing.lettermint.co',
-      subject: 'Server-side Email from Nuxt Lettermint',
-      text: 'This email was sent directly from the server using the Lettermint SDK.',
-      html: '<h2>Server-side Email</h2><p>This email was sent directly from the server using the <strong>Lettermint SDK</strong>.</p>',
-      tags: ['nuxt'],
-    })
+    const result = await sendEmail(demo)
 
     return {
       success: true,
@@ -21,28 +26,20 @@ export default defineEventHandler(async () => {
     }
   }
   catch (error: unknown) {
-    console.error('Server email demo error:', error)
+    const failure = toLettermintFailure(error)
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const err = error as any
-    let errorMessage = 'Failed to send email from server'
-
-    // Extract the actual validation message from Lettermint
-    if (err?.responseBody?.message) {
-      errorMessage = err.responseBody.message
-    }
-    else if (err?.message) {
-      errorMessage = err.message
-    }
-    else if (err?.data?.message) {
-      errorMessage = err.data.message
+    if (failure) {
+      throw createError({
+        statusCode: failure.statusCode,
+        message: failure.message,
+        data: failure.data,
+      })
     }
 
-    return {
-      success: false,
-      error: errorMessage,
-      statusCode: err?.statusCode,
-      errorType: err?.errorType,
-    }
+    console.error('[playground] Sending failed:', error)
+    throw createError({
+      statusCode: 500,
+      message: 'Failed to send email from server',
+    })
   }
 })

@@ -1,0 +1,22 @@
+name: release-to-discord
+
+# A release published by release.yml does not fire the release trigger (GitHub
+# suppresses workflows for events its default token causes), so start this by
+# hand after a release: Actions -> release-to-discord -> Run workflow. Same
+# setup as lettermint-node.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  github-releases-to-discord:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Discord Release Webhook
+        uses: lettermint/action-discord-releases@v1.0.1
+        with:
+          color: '215732'
+          webhook_url: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+          content: 'A new release for the Lettermint Nuxt module is now available! ||@Nuxt||'

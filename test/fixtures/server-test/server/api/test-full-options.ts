@@ -18,7 +18,8 @@ export default defineEventHandler(async () => {
         userId: '12345',
         campaign: 'test-campaign',
       },
-      tags: ['test', 'full-options'],
+      tag: 'test',
+      tags: [{ name: 'suite', value: 'full-options' }],
       attachments: [
         {
           filename: 'test.txt',

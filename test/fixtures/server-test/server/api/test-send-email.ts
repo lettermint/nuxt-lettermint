@@ -7,7 +7,7 @@ export default defineEventHandler(async () => {
       to: 'ok@testing.lettermint.co',
       subject: 'Test Email',
       html: '<h1>Hello from sendEmail function</h1>',
-      tags: ['test'],
+      tag: 'test',
     })
 
     return {

@@ -1,80 +1,89 @@
 import { defineEventHandler, readBody, createError } from 'h3'
-import { sendEmail, type SendEmailOptions } from '../../utils/lettermint'
+import { sendEmail } from '../../utils/lettermint'
+import { toLettermintFailure, LettermintPayloadError } from '../../utils/errors'
+import type { LettermintEmailOptions } from '../../../types'
+
+function assertSendable(body: LettermintEmailOptions | undefined) {
+  const missing = (['from', 'to', 'subject'] as const).find((field) => {
+    const value = body?.[field]
+    return !value || (Array.isArray(value) && value.length === 0)
+  })
+
+  if (missing) {
+    throw createError({
+      statusCode: 400,
+      message: `Missing required field: ${missing}`,
+    })
+  }
+}
 
 export default defineEventHandler(async (event) => {
+  const body = await readBody<LettermintEmailOptions>(event)
+
+  assertSendable(body)
+
   try {
-    const body = await readBody<SendEmailOptions>(event)
-
-    // Validate required fields
-    if (!body.from) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Missing required field: from',
-      })
-    }
-
-    if (!body.to) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Missing required field: to',
-      })
-    }
-
-    if (!body.subject) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Missing required field: subject',
-      })
-    }
-
-    if (!body.text && !body.html) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Either text or html content is required',
-      })
-    }
-
-    // Send the email
     const result = await sendEmail(body)
 
     return {
       success: true,
       messageId: result.message_id,
       status: result.status,
+      ...result.scheduled_at && { scheduledAt: result.scheduled_at },
     }
   }
   catch (error: unknown) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const err = error as any
-
-    // Handle Lettermint SDK errors with responseBody
-    if (err.responseBody?.message) {
+    if (error instanceof LettermintPayloadError) {
       throw createError({
-        statusCode: err.statusCode || 422,
-        statusMessage: err.responseBody.message,
+        statusCode: 400,
+        message: error.message,
       })
     }
 
-    // Handle Lettermint API errors
-    if (err.response) {
+    const failure = toLettermintFailure(error)
+
+    // Upstream 401/403 means the configured key is wrong: the server's fault,
+    // not the caller's. Replaying it verbatim trips app-level auth handling.
+    if (failure && (failure.statusCode === 401 || failure.statusCode === 403)) {
+      console.error('[nuxt-lettermint] The Lettermint API rejected the configured credentials:', failure.message)
+
       throw createError({
-        statusCode: err.response.status || 500,
-        statusMessage: err.response.data?.message || 'Failed to send email',
+        statusCode: 502,
+        message: 'The email service rejected the server credentials',
       })
     }
 
-    // Handle validation errors
-    if (err.statusCode) {
+    if (failure) {
       throw createError({
-        statusCode: err.statusCode,
-        statusMessage: err.message || 'Validation error',
+        statusCode: failure.statusCode,
+        message: failure.message,
+        data: failure.data,
       })
     }
 
-    // Handle other errors
+    console.error('[nuxt-lettermint] Sending failed:', error)
+
+    // undici's network failures; the SyntaxError is the SDK json-parsing a
+    // non-JSON error body, e.g. a proxy's HTML outage page.
+    if (error instanceof TypeError && (error.message === 'fetch failed' || error.message === 'terminated')) {
+      throw createError({
+        statusCode: 502,
+        message: 'Could not reach the email service',
+        data: { cause: error.message },
+      })
+    }
+
+    if (error instanceof SyntaxError) {
+      throw createError({
+        statusCode: 502,
+        message: 'The email service answered with an invalid response',
+        data: { cause: error.message },
+      })
+    }
+
     throw createError({
       statusCode: 500,
-      statusMessage: err.message || 'Internal server error while sending email',
+      message: 'Internal server error while sending email',
     })
   }
 })

@@ -12,14 +12,18 @@ A Nuxt module for sending emails using the [Lettermint](https://lettermint.co) e
 
 Lettermint is a European transactional email service provider focused on simplicity, reliability, and developer experience. Visit [Lettermint.co](https://lettermint.co) for more information about our email platform.
 
+Upgrading from v1? See [UPGRADE.md](./UPGRADE.md).
+
 ## Features
 
+- 🇪🇺 European email infrastructure
 - 🚀 Full TypeScript support
 - 🔒 Secure API key management
 - 📧 Simple composable for client-side usage
-- 🛠️ Direct server-side SDK access
-- ⚙️ Flexible configuration via environment variables or `nuxt.config.ts`
-- 🎯 Compatible with Nuxt 3 and Nuxt 4
+- 📦 Batch sending
+- 🛠️ Full SDK and team API access
+- ⚙️ Configurable via env or `nuxt.config.ts`
+- 🎯 Built for Nuxt 4
 
 ## Quick Setup
 
@@ -87,52 +91,83 @@ The module accepts the following configuration options:
 export default defineNuxtConfig({
   modules: ['nuxt-lettermint'],
   lettermint: {
-    // Your Lettermint API key (see step 3 above for configuration options)
+    // Your project sending token (see step 3 above for configuration options)
     apiKey: 'your-api-key',
-    
-    // Enable/disable the auto-generated /api/lettermint/send endpoint (default: true)
-    // Set to false if you want to create your own custom endpoints
-    autoEndpoint: true
+
+    // Team API token, only needed for useLettermintApi(). Server-side only.
+    apiToken: 'your-team-api-token',
+
+    // Register /api/lettermint/send (default: false). The route has no
+    // authentication of its own. See "The auto-generated endpoint" below
+    autoEndpoint: true,
+
+    // Override the API base URL and request timeout in ms
+    baseUrl: 'https://api.lettermint.co/v1',
+    timeout: 30000
   }
 })
 ```
 
-### Disabling the Auto-Generated Endpoint
+The credentials and client options have environment variable equivalents: `NUXT_LETTERMINT_API_KEY`, `NUXT_LETTERMINT_API_TOKEN`, `NUXT_LETTERMINT_BASE_URL` and `NUXT_LETTERMINT_TIMEOUT`. `autoEndpoint` has none: routes are registered at build time, so it only takes effect in `nuxt.config.ts`. In particular, a `NUXT_PUBLIC_LETTERMINT_AUTO_ENDPOINT` environment variable cannot enable or disable the route.
 
-By default, the module creates an endpoint at `/api/lettermint/send` for sending emails. If you prefer to create your own custom endpoints, you can disable this behavior:
+### The Auto-Generated Endpoint
+
+The module can register an endpoint at `/api/lettermint/send`, which the client-side `useLettermint()` composable posts to. It is **off by default**: the route has no authentication of its own, so anyone who can reach your site could send mail through it, from your domain and against your quota.
+
+Turn it on when you want it, and put something in front of it:
 
 ```typescript
 // nuxt.config.ts
 export default defineNuxtConfig({
   modules: ['nuxt-lettermint'],
   lettermint: {
-    autoEndpoint: false
+    autoEndpoint: true
   }
 })
 ```
 
-**Note:** When you disable the auto-generated endpoint:
-- You can still send emails directly from your server code using the `sendEmail` function
-- The client-side `useLettermint()` composable will not work unless you create a custom endpoint at `/api/lettermint/send`
-- Only create a custom endpoint if you need specific routing, additional logic, or client-side email sending:
+```typescript
+// server/middleware/lettermint-guard.ts
+export default defineEventHandler(async (event) => {
+  if (!event.path.startsWith('/api/lettermint/send')) return
+
+  if (!event.context.user) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+})
+```
+
+Be careful about what you let the browser decide. An endpoint that takes `from`, `to` and `html` straight from the request body lets any visitor who gets past your check send whatever they like from your domain. For a contact form, fix the sender and the recipient server-side and accept only the message:
 
 ```typescript
-// server/api/custom-send.post.ts (optional)
+// server/api/contact.post.ts
 import { sendEmail } from '#imports'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event)
-  // Add your custom logic here
-  return await sendEmail(body)
+  const { message } = await readBody(event)
+
+  const result = await sendEmail({
+    from: 'website@example.com',
+    to: 'support@example.com',
+    subject: 'New contact form message',
+    text: message,
+  })
+
+  return { success: true, messageId: result.message_id, status: result.status }
 })
 ```
+
+Point the composable at your own route with `useLettermint({ endpoint: '/api/contact' })`. The composable accepts whatever the route answers: the module's own shape, the raw SDK result, or an empty 2xx. A response carrying an `error`, or `success: false`, is reported as a failure. Server-side `sendEmail()` and `sendEmails()` work regardless of this setting, since they never go through the endpoint.
 
 ## Usage
 
 ### Client-Side
 
+Sending from the browser goes through a server route: either the built-in one (`autoEndpoint: true`) or your own. See [The Auto-Generated Endpoint](#the-auto-generated-endpoint) before you expose either.
+
 ```vue
 <script setup>
+// Posts to /api/lettermint/send, or pass your own: useLettermint({ endpoint: '/api/contact' })
 const { send, sending, error } = useLettermint()
 
 await send({
@@ -156,24 +191,172 @@ export default defineEventHandler(async () => {
     to: 'ok@testing.lettermint.co',
     subject: 'Welcome',
     html: '<h1>Welcome!</h1>',
-    tags: ['welcome']
+    tag: 'welcome'
   })
+})
+```
+
+#### Email options
+
+`sendEmail()` and the `send()` returned by `useLettermint()` take the same options:
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `from` | `string` | Sender address, optionally as `Name <address>`. Required. |
+| `to` | `string \| string[]` | Recipients. Required. |
+| `subject` | `string` | Required. |
+| `text` | `string` | Plain text body. Provide `text`, `html`, or both. |
+| `html` | `string` | HTML body. |
+| `cc` | `string \| string[]` | |
+| `bcc` | `string \| string[]` | |
+| `replyTo` | `string \| string[]` | |
+| `headers` | `Record<string, string>` | Custom headers. |
+| `metadata` | `Record<string, unknown>` | Returned on the message and in webhooks. Values must be strings, numbers or booleans; they are sent as strings. |
+| `tag` | `string` | A plain label for the message. |
+| `tags` | `{ name, value }[]` | Key/value tags. |
+| `attachments` | `Array<{ filename, content, contentType?, contentId? }>` | `content` is base64 or a `Buffer`. Set `contentId` to reference the file from the HTML body. |
+| `settings` | `{ trackOpens?, trackClicks?, tls? }` | Per-message overrides. `tls` is `opportunistic` or `enforced`. |
+| `route` | `string` | Send through a specific route instead of the project default. |
+| `idempotencyKey` | `string` | Reuse across retries so the message is only delivered once. |
+| `scheduledAt` | `string \| Date` | Deliver at this time instead of immediately. A `Date` or an ISO 8601 string with a timezone, at most 30 days ahead. |
+
+```typescript
+await sendEmail({
+  from: 'Acme <hello@example.com>',
+  to: ['ok@testing.lettermint.co', 'second@testing.lettermint.co'],
+  subject: 'Your invoice',
+  html: '<h1>Invoice</h1><img src="cid:logo">',
+  attachments: [
+    { filename: 'invoice.pdf', content: pdfBuffer, contentType: 'application/pdf' },
+    { filename: 'logo.png', content: logoBuffer, contentId: 'logo' },
+  ],
+  idempotencyKey: `invoice-${invoice.id}`,
+})
+```
+
+### Scheduled sending
+
+Set `scheduledAt` to hand the message to Lettermint now and have it delivered later, up to 30 days ahead. The response comes back with `status: 'scheduled'` and the delivery time. A scheduled message can be moved or cancelled through the [Team API](#team-api) until it is released:
+
+```typescript
+const { message_id } = await sendEmail({ ...message, scheduledAt: '2026-09-01T09:00:00Z' })
+
+const api = useLettermintApi()
+await api.messages.reschedule(message_id, { scheduled_at: '2026-09-02T09:00:00Z' })
+await api.messages.cancel(message_id)
+```
+
+### Batch Sending
+
+`sendEmails()` puts every message in a single request. Each one is accepted or rejected on its own, and the results come back in the order you passed them.
+
+```typescript
+// server/api/notify.post.ts
+import { sendEmails } from '#imports'
+
+export default defineEventHandler(async () => {
+  return await sendEmails(
+    subscribers.map(subscriber => ({
+      from: 'hello@example.com',
+      to: subscriber.email,
+      subject: 'Your weekly digest',
+      html: renderDigest(subscriber),
+    })),
+    { idempotencyKey: `digest-${week}` },
+  )
+})
+```
+
+### Team API
+
+`useLettermintApi()` exposes the rest of the Lettermint API: domains, messages, projects, routes, stats, suppressions, team and webhooks. It needs a **team API token**, which is a different credential from your project sending key. Create one in your team settings and set `NUXT_LETTERMINT_API_TOKEN`.
+
+Keep this server-side. The token grants access to your whole team, so never expose it through a public endpoint.
+
+```typescript
+// server/api/deliverability.get.ts
+import { useLettermintApi } from '#imports'
+
+export default defineEventHandler(async () => {
+  const api = useLettermintApi()
+
+  const [stats, suppressions] = await Promise.all([
+    api.stats.retrieve({ from: '2026-01-01', to: '2026-01-31' }),
+    api.suppressions.list(),
+  ])
+
+  return { stats, suppressions }
+})
+```
+
+### Error handling
+
+The SDK's error classes are re-exported, prefixed so they do not collide with anything else in your auto-import namespace:
+
+```typescript
+import { sendEmail, LettermintValidationError, LettermintTimeoutError } from '#imports'
+
+try {
+  await sendEmail(message)
+}
+catch (error) {
+  if (error instanceof LettermintValidationError) {
+    // 422: the API refused the message. error.responseBody has the reason
+  }
+  if (error instanceof LettermintTimeoutError) {
+    // the request did not come back within `timeout`
+  }
+}
+```
+
+Available: `LettermintError` (the base class), `LettermintHttpRequestError`, `LettermintValidationError`, `LettermintClientError` and `LettermintTimeoutError`. The module adds `LettermintPayloadError`, thrown before anything goes on the wire when an option cannot be mapped onto the API (bad metadata, tags, attachment content, or `scheduledAt`).
+
+Types come from the package rather than `#imports`, since Nuxt's server auto-imports carry values only:
+
+```typescript
+import type { LettermintEmailOptions, MessageStatus } from 'nuxt-lettermint'
+```
+
+Everything the module defines is exported there, including `LettermintFailure` (the return type of `toLettermintFailure()`), along with the SDK types its options and results use: `MessageStatus`, `TlsPolicy`, `SendEmailResponse` and `SendBatchEmailResponse`. For the rest of the SDK's generated types, add `lettermint` to your app's own dependencies.
+
+To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise:
+
+```typescript
+import { sendEmail, toLettermintFailure } from '#imports'
+
+export default defineEventHandler(async (event) => {
+  try {
+    return await sendEmail(await readBody(event))
+  }
+  catch (error) {
+    const failure = toLettermintFailure(error)
+
+    throw createError({
+      statusCode: failure?.statusCode ?? 500,
+      message: failure?.message ?? 'Failed to send email',
+      data: failure?.data,
+    })
+  }
 })
 ```
 
 ### Advanced Usage
 
-```typescript
-import { useLettermint } from '#imports'
+`useLettermintEmail()` hands you an email builder for anything the helpers above don't cover. Take one per message: the builder holds the message it is composing, so a builder kept around and shared between requests would let them overwrite each other.
 
-const lettermint = useLettermint()
-await lettermint.email
+```typescript
+import { useLettermintEmail, useLettermint } from '#imports'
+
+await useLettermintEmail()
   .from('sender@example.com')
   .to('ok@testing.lettermint.co')
   .subject('Hello')
   .html('<h1>Hello</h1>')
   .tag('campaign')
   .send()
+
+// useLettermint() returns the SDK instance itself, for the rest of its surface
+await useLettermint().email.ping()
 ```
 
 ## Links
@@ -181,6 +364,44 @@ await lettermint.email
 - [Lettermint](https://lettermint.co)
 - [Lettermint Documentation](https://docs.lettermint.co)
 - [Lettermint Node.js SDK](https://www.npmjs.com/package/lettermint)
+
+## Contribution
+
+<details>
+  <summary>Local development</summary>
+
+  ```bash
+  # Install dependencies
+  npm install
+
+  # Generate type stubs
+  npm run dev:prepare
+
+  # Develop with the playground
+  npm run dev
+
+  # Build the playground
+  npm run dev:build
+
+  # Run ESLint
+  npm run lint
+
+  # Run Vitest
+  npm run test
+  npm run test:watch
+
+  # Type check the module, the tests and the playground
+  npm run test:types
+  ```
+
+  Releases are cut by semantic-release from the commit history, so commit messages
+  matter: `fix:` releases a patch, `feat:` a minor, and a `BREAKING CHANGE:` footer
+  (or `feat!:`) a major.
+</details>
+
+## Security
+
+Found a vulnerability? Please report it privately, see [SECURITY.md](./SECURITY.md).
 
 ## License
 

@@ -1,27 +1,32 @@
-import { defineNuxtModule, addPlugin, createResolver, addServerHandler, addImportsDir, addServerImportsDir } from '@nuxt/kit'
+import { defineNuxtModule, createResolver, addServerHandler, addImportsDir, addServerImportsDir } from '@nuxt/kit'
 import { defu } from 'defu'
+import type { LettermintModuleOptions } from './runtime/types'
 
-export interface ModuleOptions {
-  apiKey?: string
-  autoEndpoint?: boolean
-}
+// Server auto-imports carry values, not types, so the public types are reached
+// through the package itself: import type { ... } from 'nuxt-lettermint'.
+export type * from './runtime/types'
+
+export type ModuleOptions = LettermintModuleOptions
 
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'nuxt-lettermint',
     configKey: 'lettermint',
     compatibility: {
-      nuxt: '>=3.0.0',
+      nuxt: '>=4.0.0',
     },
   },
   defaults: {
-    autoEndpoint: true,
+    autoEndpoint: false,
   },
   setup: function (options, nuxt) {
     const resolver = createResolver(import.meta.url)
 
     const runtimeConfig = {
       apiKey: options.apiKey || process.env.NUXT_LETTERMINT_API_KEY || '',
+      apiToken: options.apiToken || process.env.NUXT_LETTERMINT_API_TOKEN || '',
+      baseUrl: options.baseUrl || process.env.NUXT_LETTERMINT_BASE_URL || '',
+      timeout: options.timeout || Number(process.env.NUXT_LETTERMINT_TIMEOUT) || 0,
     }
 
     nuxt.options.runtimeConfig.lettermint = defu(
@@ -29,18 +34,23 @@ export default defineNuxtModule<ModuleOptions>({
       runtimeConfig,
     ) as typeof runtimeConfig
 
+    // Mirrors the build-time route registration, so nothing may override it.
+    nuxt.options.runtimeConfig.public.lettermint = {
+      ...nuxt.options.runtimeConfig.public.lettermint as Record<string, unknown> | undefined,
+      autoEndpoint: options.autoEndpoint === true,
+    }
+
     addServerImportsDir(resolver.resolve('./runtime/server/utils'))
 
-    if (options.autoEndpoint !== false) {
+    if (options.autoEndpoint === true) {
       addServerHandler({
         route: '/api/lettermint/send',
+        method: 'post',
         handler: resolver.resolve('./runtime/server/api/lettermint/send.post'),
       })
     }
 
     addImportsDir(resolver.resolve('./runtime/composables'))
-
-    addPlugin(resolver.resolve('./runtime/plugin'))
   },
 })
 
@@ -49,9 +59,14 @@ declare module '@nuxt/schema' {
   interface RuntimeConfig {
     lettermint: {
       apiKey: string
+      apiToken: string
+      baseUrl: string
+      timeout: number
     }
   }
   interface PublicRuntimeConfig {
-    lettermint?: Record<string, never>
+    lettermint: {
+      autoEndpoint: boolean
+    }
   }
 }

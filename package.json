@@ -1,6 +1,6 @@
 {
   "name": "nuxt-lettermint",
-  "version": "1.0.4",
+  "version": "2.0.0",
   "description": "Nuxt module for sending emails with Lettermint",
   "author": "Bjorn Antonissen",
   "repository": {
@@ -12,6 +12,13 @@
   },
   "homepage": "https://github.com/lettermint/nuxt-lettermint#readme",
   "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || ^24.11.0 || >=26.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "keywords": [
     "nuxt",
     "nuxt-module",
@@ -37,23 +44,28 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "UPGRADE.md"
   ],
   "scripts": {
     "prepack": "nuxt-module-build build",
     "dev": "npm run dev:prepare && nuxi dev playground",
     "dev:build": "nuxi build playground",
     "dev:prepare": "nuxt-module-build build --stub && nuxt-module-build prepare && nuxi prepare playground",
-    "release": "npm run lint && npm run test && npm run prepack && changelogen --release && npm publish && git push --follow-tags",
+    "release": "semantic-release",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:types": "vue-tsc --noEmit && cd playground && vue-tsc --noEmit"
+    "test:types": "vue-tsc --noEmit && cd playground && vue-tsc --noEmit",
+    "release:dry": "semantic-release --dry-run --no-ci"
   },
   "dependencies": {
     "@nuxt/kit": "^4.4.2",
     "defu": "^6.1.4",
-    "lettermint": "^1.5.1"
+    "h3": "^1.15.11",
+    "lettermint": "^2.4.1"
   },
   "devDependencies": {
     "@nuxt/devtools": "^3.1.1",
@@ -61,10 +73,12 @@
     "@nuxt/module-builder": "^1.0.2",
     "@nuxt/schema": "^4.4.2",
     "@nuxt/test-utils": "^4.0.0",
-    "@types/node": "^25.0.0",
-    "changelogen": "^0.6.2",
-    "eslint": "^9.39.2",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
+    "@types/node": "^26.2.0",
+    "eslint": "^10.9.0",
     "nuxt": "^4.4.2",
+    "semantic-release": "^25.0.3",
     "typescript": "~5.9.3",
     "vitest": "^4.0.0",
     "vue-tsc": "^3.2.1"
