@@ -15,6 +15,11 @@ export default createConfigForNuxt({
     ],
   },
 })
-  .append(
-    // your custom flat config here...
-  )
+  .append({
+    rules: {
+      // `import { X } from 'lettermint'; export { X }` makes every consuming app's
+      // Nitro (Rollup) build warn UNUSED_EXTERNAL_IMPORT: an export specifier does
+      // not count as a use of the import. `export { X } from` has no import to flag.
+      'unicorn/prefer-export-from': 'error',
+    },
+  })

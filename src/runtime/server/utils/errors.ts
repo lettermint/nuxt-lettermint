@@ -1,4 +1,4 @@
-import { ClientError, HttpRequestError, LettermintError, TimeoutError, ValidationError } from 'lettermint'
+import { LettermintError, TimeoutError } from 'lettermint'
 
 export {
   LettermintError,
@@ -6,7 +6,7 @@ export {
   HttpRequestError as LettermintHttpRequestError,
   TimeoutError as LettermintTimeoutError,
   ValidationError as LettermintValidationError,
-}
+} from 'lettermint'
 
 /**
  * Bad input the payload mapping refused, before anything went on the wire.
