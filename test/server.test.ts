@@ -113,6 +113,10 @@ describe('server utilities', async () => {
       threw: boolean
       recognised: boolean
       isValidationError: boolean
+      isApiError: boolean
+      isHttpRequestError: boolean
+      isBaseError: boolean
+      name: string
       failure: { statusCode: number, message: string }
     }>('/api/test-error-classes')
 
@@ -120,6 +124,10 @@ describe('server utilities', async () => {
       threw: true,
       recognised: true,
       isValidationError: true,
+      isApiError: true,
+      isHttpRequestError: true,
+      isBaseError: true,
+      name: 'ValidationError',
       failure: {
         statusCode: 422,
         message: 'Sender domain is not verified',

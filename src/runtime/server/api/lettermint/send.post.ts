@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { sendEmail } from '../../utils/lettermint'
-import { toLettermintFailure, LettermintPayloadError } from '../../utils/errors'
+import { toLettermintFailure, LettermintApiError, LettermintPayloadError } from '../../utils/errors'
 import type { LettermintEmailOptions } from '../../../types'
 
 function assertSendable(body: LettermintEmailOptions | undefined) {
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
       success: true,
       messageId: result.message_id,
       status: result.status,
-      ...result.scheduled_at && { scheduledAt: result.scheduled_at },
+      ...result.status === 'scheduled' && result.scheduled_at && { scheduledAt: result.scheduled_at },
     }
   }
   catch (error: unknown) {
@@ -54,6 +54,12 @@ export default defineEventHandler(async (event) => {
     }
 
     if (failure) {
+      // Short of an error status from the API (a timeout, an unreachable
+      // service, a misconfigured client), the detail belongs in the log.
+      if (!(error instanceof LettermintApiError)) {
+        console.error('[nuxt-lettermint] Sending failed:', error)
+      }
+
       throw createError({
         statusCode: failure.statusCode,
         message: failure.message,
@@ -62,24 +68,6 @@ export default defineEventHandler(async (event) => {
     }
 
     console.error('[nuxt-lettermint] Sending failed:', error)
-
-    // undici's network failures; the SyntaxError is the SDK json-parsing a
-    // non-JSON error body, e.g. a proxy's HTML outage page.
-    if (error instanceof TypeError && (error.message === 'fetch failed' || error.message === 'terminated')) {
-      throw createError({
-        statusCode: 502,
-        message: 'Could not reach the email service',
-        data: { cause: error.message },
-      })
-    }
-
-    if (error instanceof SyntaxError) {
-      throw createError({
-        statusCode: 502,
-        message: 'The email service answered with an invalid response',
-        data: { cause: error.message },
-      })
-    }
 
     throw createError({
       statusCode: 500,

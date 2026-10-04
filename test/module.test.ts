@@ -89,6 +89,37 @@ describe('/api/lettermint/send', async () => {
     expect(lettermint.requests).toHaveLength(0)
   })
 
+  it('answers 400 for tags the SDK refuses, without sending anything', async () => {
+    const response = await post({ ...message, tags: [{ name: 'not a valid name', value: 'x' }] })
+
+    expect(response.status).toBe(400)
+    expect(response.body.message).toContain('tags: Message tag names must match')
+    expect(lettermint.requests).toHaveLength(0)
+  })
+
+  it('keeps concurrent requests apart, down to the answer each one gets', async () => {
+    // The first request is answered last, so the two are in flight together.
+    const answer = (request: { body: { subject: string } }) => ({ message_id: `msg_${request.body.subject}`, status: 'pending' })
+    lettermint.respondOnceWith({ status: 200, body: answer, delayMs: 150 })
+    lettermint.respondOnceWith({ status: 200, body: answer })
+
+    const first = { ...message, to: 'one@acme.com', cc: 'cc-one@acme.com', subject: 'one', html: '<p>one</p>', tag: 'first', idempotencyKey: 'key-one' }
+    const second = { ...message, to: ['two@acme.com', 'three@acme.com'], subject: 'two', text: 'two', html: undefined, metadata: { order: 2 }, idempotencyKey: 'key-two' }
+
+    const [one, two] = await Promise.all([post(first), post(second)])
+
+    expect(one.body).toEqual({ success: true, messageId: 'msg_one', status: 'pending' })
+    expect(two.body).toEqual({ success: true, messageId: 'msg_two', status: 'pending' })
+
+    const sent = Object.fromEntries(lettermint.requests.map(request => [request.body.subject, request]))
+
+    expect(lettermint.requests).toHaveLength(2)
+    expect(sent.one!.idempotencyKey).toBe('key-one')
+    expect(sent.one!.body).toEqual({ from: message.from, to: ['one@acme.com'], cc: ['cc-one@acme.com'], subject: 'one', html: '<p>one</p>', tag: 'first' })
+    expect(sent.two!.idempotencyKey).toBe('key-two')
+    expect(sent.two!.body).toEqual({ from: message.from, to: ['two@acme.com', 'three@acme.com'], subject: 'two', text: 'two', metadata: { order: '2' } })
+  })
+
   it('surfaces the reason the API rejected a message', async () => {
     lettermint.respondOnceWith({ status: 422, body: { message: 'Sending domain is not verified' } })
 
@@ -121,7 +152,7 @@ describe('/api/lettermint/send', async () => {
     const response = await post(message)
 
     expect(response.status).toBe(504)
-    expect(response.body.message).toContain('timeout')
+    expect(response.body.message).toContain('timed out')
   })
 
   it('surfaces an error reported under the error key', async () => {

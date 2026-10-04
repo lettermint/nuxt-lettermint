@@ -4,7 +4,8 @@ export default defineEventHandler(async () => {
   try {
     const lettermint = useLettermint()
 
-    const result = await lettermint.email
+    const result = await lettermint.emails
+      .compose()
       .from('nuxt@lettermint.dev')
       .to('ok@testing.lettermint.co')
       .subject('Test SDK Email')

@@ -23,26 +23,26 @@ interface CapturedRequest {
 
 let requests: CapturedRequest[] = []
 
-function mockFetch(delayMs = 0) {
+// Stands in for the Lettermint API: nothing in this file reaches the network.
+function mockFetch(delayFor: (body: any) => number = () => 0) { // eslint-disable-line @typescript-eslint/no-explicit-any
   return vi.fn(async (url: string, init: RequestInit) => {
+    const sent = JSON.parse(String(init.body))
+
     requests.push({
       url: String(url),
       headers: (init.headers || {}) as Record<string, string>,
-      body: JSON.parse(String(init.body)),
+      body: sent,
     })
 
+    const delayMs = delayFor(sent)
     if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs))
 
     // The batch endpoint answers with one result per message.
     const body = String(url).endsWith('/send/batch')
-      ? JSON.parse(String(init.body)).map((_: unknown, index: number) => ({ message_id: `msg_${index}`, status: 'pending' }))
-      : { message_id: 'msg_1', status: 'pending' }
+      ? sent.map((_: unknown, index: number) => ({ message_id: `msg_${index}`, status: 'pending' }))
+      : { message_id: sent.subject === base.subject ? 'msg_1' : `msg_${sent.subject}`, status: 'pending' }
 
-    return {
-      ok: true,
-      status: 200,
-      json: async () => body,
-    }
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
   })
 }
 
@@ -270,20 +270,74 @@ describe('sendEmail payload', () => {
   })
 
   it('keeps concurrent sends isolated from each other', async () => {
-    vi.stubGlobal('fetch', mockFetch(20))
+    // The first send is answered last, so both are in flight at once.
+    vi.stubGlobal('fetch', mockFetch(body => body.subject === 'First' ? 30 : 0))
     const { sendEmail } = await import('../src/runtime/server/utils/lettermint')
 
-    await Promise.all([
-      sendEmail({ ...base, to: 'one@acme.com', subject: 'First' }),
-      sendEmail({ ...base, to: 'two@acme.com', subject: 'Second' }),
+    const results = await Promise.all([
+      sendEmail({
+        ...base,
+        to: 'one@acme.com',
+        cc: 'cc@acme.com',
+        subject: 'First',
+        tag: 'first',
+        attachments: [{ filename: 'one.txt', content: 'b25l' }],
+        idempotencyKey: 'key-first',
+      }),
+      sendEmail({
+        ...base,
+        to: ['two@acme.com', 'three@acme.com'],
+        subject: 'Second',
+        html: '<p>Second</p>',
+        tags: [{ name: 'order', value: 'second' }],
+        idempotencyKey: 'key-second',
+      }),
     ])
 
+    expect(results.map(result => result.message_id)).toEqual(['msg_First', 'msg_Second'])
     expect(requests).toHaveLength(2)
-    const bySubject = Object.fromEntries(requests.map(r => [r.body.subject, r.body.to]))
-    expect(bySubject).toEqual({
-      First: ['one@acme.com'],
-      Second: ['two@acme.com'],
+
+    const bySubject = Object.fromEntries(requests.map(request => [request.body.subject, request]))
+
+    expect(bySubject.First!.headers['Idempotency-Key']).toBe('key-first')
+    expect(bySubject.First!.body).toEqual({
+      from: base.from,
+      to: ['one@acme.com'],
+      cc: ['cc@acme.com'],
+      subject: 'First',
+      text: 'Hi',
+      tag: 'first',
+      attachments: [{ filename: 'one.txt', content: 'b25l' }],
     })
+    expect(bySubject.Second!.headers['Idempotency-Key']).toBe('key-second')
+    expect(bySubject.Second!.body).toEqual({
+      from: base.from,
+      to: ['two@acme.com', 'three@acme.com'],
+      subject: 'Second',
+      text: 'Hi',
+      html: '<p>Second</p>',
+      tags: [{ name: 'order', value: 'second' }],
+    })
+  })
+
+  it('does not carry an idempotency key over to the next send', async () => {
+    const { sendEmail } = await import('../src/runtime/server/utils/lettermint')
+
+    await sendEmail({ ...base, idempotencyKey: 'order-42' })
+    await sendEmail(base)
+
+    expect(requests[0]!.headers['Idempotency-Key']).toBe('order-42')
+    expect(requests[1]!.headers['Idempotency-Key']).toBeUndefined()
+  })
+
+  it('refuses tags the SDK rejects, as a payload error and before any request', async () => {
+    const sending = send({ ...base, tags: [{ name: 'has spaces', value: 'x' }] })
+    // After send(): vi.resetModules() hands each test a fresh copy of the module.
+    const { LettermintPayloadError } = await import('../src/runtime/server/utils/errors')
+
+    await expect(sending).rejects.toBeInstanceOf(LettermintPayloadError)
+    await expect(sending).rejects.toThrow('tags: Message tag names must match')
+    expect(requests).toHaveLength(0)
   })
 })
 
@@ -292,6 +346,20 @@ describe('sendEmail configuration errors', () => {
     runtimeConfig.apiKey = ''
 
     await expect(send(base)).rejects.toThrow('Lettermint API key is not configured')
+  })
+
+  it('treats a key of only whitespace as missing', async () => {
+    runtimeConfig.apiKey = ' \n'
+
+    await expect(send(base)).rejects.toThrow('Lettermint API key is not configured')
+  })
+
+  it('strips whitespace around the key, as fetch did for SDK 2', async () => {
+    runtimeConfig.apiKey = 'test-api-key\n'
+
+    await send(base)
+
+    expect(requests[0]!.headers['x-lettermint-token']).toBe('test-api-key')
   })
 })
 
@@ -353,6 +421,13 @@ describe('sendEmails', () => {
     expect(requests[0]!.headers['Idempotency-Key']).toBe('batch-1')
   })
 
+  it('names the message whose tags the SDK refuses', async () => {
+    await expect(sendMany([base, { ...base, tags: [{ name: '__lettermint_x', value: 'x' }] }]))
+      .rejects.toThrow('messages[1].tags: Message tag names must not start with __lettermint.')
+
+    expect(requests).toHaveLength(0)
+  })
+
   it('refuses a per-message idempotency key instead of dropping it', async () => {
     await expect(sendMany([base, { ...base, idempotencyKey: 'order-42' } as typeof base]))
       .rejects.toThrow('Message 1 carries an idempotencyKey, but the API applies idempotency to the batch as a whole.')
@@ -378,9 +453,43 @@ describe('useLettermint', () => {
     expect(useLettermintEmail()).not.toBe(useLettermintEmail())
   })
 
-  it('does not share the SDK instance across calls', async () => {
+  it('hands out an immutable builder, so a shared base cannot leak between sends', async () => {
+    const { useLettermintEmail } = await import('../src/runtime/server/utils/lettermint')
+    const welcome = useLettermintEmail().from(base.from).subject('Welcome').text('Hi')
+
+    await Promise.all([
+      welcome.to('one@acme.com').send({ idempotencyKey: 'welcome-one' }),
+      welcome.to('two@acme.com').tag('second').send(),
+    ])
+
+    expect(welcome.build()).toEqual({ from: base.from, to: [], subject: 'Welcome', text: 'Hi' })
+    expect(requests.map(request => [request.body.to, request.body.tag, request.headers['Idempotency-Key']])).toEqual([
+      [['one@acme.com'], undefined, 'welcome-one'],
+      [['two@acme.com'], 'second', undefined],
+    ])
+  })
+
+  it('reads the configuration on every call', async () => {
     const { useLettermint } = await import('../src/runtime/server/utils/lettermint')
 
     expect(useLettermint()).not.toBe(useLettermint())
+  })
+
+  it('sends with the sending key and reaches the team API with the team token', async () => {
+    runtimeConfig.apiToken = 'test-api-token'
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      requests.push({ url: String(url), headers: init.headers as Record<string, string>, body: init.body && JSON.parse(String(init.body)) })
+      return new Response(JSON.stringify({ message_id: 'msg_1', status: 'pending' }), { status: 200 })
+    }))
+    const { useLettermint } = await import('../src/runtime/server/utils/lettermint')
+    const lettermint = useLettermint()
+
+    await lettermint.emails.send({ from: base.from, to: [base.to], subject: base.subject, text: base.text })
+    await lettermint.team.retrieve()
+
+    expect(requests[0]!.headers['x-lettermint-token']).toBe('test-api-key')
+    expect(requests[0]!.headers.Authorization).toBeUndefined()
+    expect(requests[1]!.headers.Authorization).toBe('Bearer test-api-token')
+    expect(requests[1]!.headers['x-lettermint-token']).toBeUndefined()
   })
 })

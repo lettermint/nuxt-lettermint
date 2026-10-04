@@ -1,7 +1,7 @@
 import type {
   MessageStatus as SdkMessageStatus,
-  SendBatchEmailResponse as SdkSendBatchEmailResponse,
-  SendEmailResponse as SdkSendEmailResponse,
+  SendBatchMailResponse,
+  SendMailResponse,
   TlsPolicy as SdkTlsPolicy,
 } from 'lettermint'
 
@@ -10,8 +10,10 @@ import type {
 // package does not export at runtime.
 export type MessageStatus = SdkMessageStatus
 export type TlsPolicy = SdkTlsPolicy
-export type SendEmailResponse = SdkSendEmailResponse
-export type SendBatchEmailResponse = SdkSendBatchEmailResponse
+/** The SDK's `SendMailResponse`: narrow on `status` to read `scheduled_at`. */
+export type SendEmailResponse = SendMailResponse
+/** The SDK's `SendBatchMailResponse`, one result per message, in order. */
+export type SendBatchEmailResponse = SendBatchMailResponse
 
 export type { LettermintFailure } from '../server/utils/errors'
 

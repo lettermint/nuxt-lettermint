@@ -6,14 +6,16 @@ export interface MockRequest {
   path: string
   token?: string
   authorization?: string
+  idempotencyKey?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any
 }
 
 export interface MockResponse {
   status: number
+  /** The JSON to answer with, or a function of the request it answers. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  body: any
+  body: any | ((request: MockRequest) => any)
   delayMs?: number
 }
 
@@ -43,13 +45,16 @@ export async function startMockLettermint(): Promise<MockLettermint> {
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString()
 
-      requests.push({
+      const request: MockRequest = {
         method: req.method || '',
         path: req.url || '',
         token: req.headers['x-lettermint-token'] as string | undefined,
         authorization: req.headers.authorization,
+        idempotencyKey: req.headers['idempotency-key'] as string | undefined,
         body: raw ? JSON.parse(raw) : undefined,
-      })
+      }
+
+      requests.push(request)
 
       if (req.url?.endsWith('/ping')) {
         res.writeHead(200, { 'Content-Type': 'text/plain' })
@@ -59,14 +64,15 @@ export async function startMockLettermint(): Promise<MockLettermint> {
 
       // The batch endpoint answers with one result per message.
       const fallback = req.url?.endsWith('/send/batch')
-        ? { status: 200, body: (requests.at(-1)?.body as unknown[]).map((_, index) => ({ message_id: `msg_mock_${index}`, status: 'pending' })) }
+        ? { status: 200, body: (request.body as unknown[]).map((_, index) => ({ message_id: `msg_mock_${index}`, status: 'pending' })) }
         : accepted
 
       const response = queued.shift() || fallback
+      const body = typeof response.body === 'function' ? response.body(request) : response.body
 
       setTimeout(() => {
         res.writeHead(response.status, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify(response.body))
+        res.end(JSON.stringify(body))
       }, response.delayMs || 0)
     })
   })

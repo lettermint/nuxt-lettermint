@@ -1,4 +1,12 @@
-import { sendEmail, toLettermintFailure, isLettermintError, LettermintValidationError } from '#imports'
+import {
+  sendEmail,
+  toLettermintFailure,
+  isLettermintError,
+  LettermintApiError,
+  LettermintError,
+  LettermintHttpRequestError,
+  LettermintValidationError,
+} from '#imports'
 
 export default defineEventHandler(async () => {
   try {
@@ -16,6 +24,10 @@ export default defineEventHandler(async () => {
       threw: true,
       recognised: isLettermintError(error),
       isValidationError: error instanceof LettermintValidationError,
+      isApiError: error instanceof LettermintApiError,
+      isHttpRequestError: error instanceof LettermintHttpRequestError,
+      isBaseError: error instanceof LettermintError,
+      name: (error as Error).name,
       failure: toLettermintFailure(error),
     }
   }
