@@ -12,7 +12,7 @@ A Nuxt module for sending emails using the [Lettermint](https://lettermint.co) e
 
 Lettermint is a European transactional email service provider focused on simplicity, reliability, and developer experience. Visit [Lettermint.co](https://lettermint.co) for more information about our email platform.
 
-Upgrading from v1? See [UPGRADE.md](./UPGRADE.md).
+Upgrading from v1 or v2? See [UPGRADE.md](./UPGRADE.md).
 
 ## Features
 
@@ -271,6 +271,8 @@ export default defineEventHandler(async () => {
 
 `useLettermintApi()` exposes the rest of the Lettermint API: domains, messages, projects, routes, stats, suppressions, team and webhooks. It needs a **team API token**, which is a different credential from your project sending key. Create one in your team settings and set `NUXT_LETTERMINT_API_TOKEN`.
 
+It returns the [Lettermint SDK](https://github.com/lettermint/lettermint-node)'s client, so every method in the SDK's documentation is available. Each part of it uses its own credential and never falls back to the other: the team API uses the team token, `emails.*` the sending key (when one is configured).
+
 Keep this server-side. The token grants access to your whole team, so never expose it through a public endpoint.
 
 ```typescript
@@ -289,27 +291,60 @@ export default defineEventHandler(async () => {
 })
 ```
 
+Query parameters are typed objects, and every list has an `iterate()` that follows the pages for you:
+
+```typescript
+const api = useLettermintApi()
+
+const page = await api.messages.list({ page: { size: 50 }, filter: { status: 'hard_bounced' } })
+
+for await (const message of api.messages.iterate({ filter: { status: 'hard_bounced' } })) {
+  console.log(message.id, message.subject)
+}
+```
+
 ### Error handling
 
 The SDK's error classes are re-exported, prefixed so they do not collide with anything else in your auto-import namespace:
 
 ```typescript
-import { sendEmail, LettermintValidationError, LettermintTimeoutError } from '#imports'
+import { sendEmail, LettermintValidationError, LettermintRateLimitError, LettermintTimeoutError } from '#imports'
 
 try {
   await sendEmail(message)
 }
 catch (error) {
   if (error instanceof LettermintValidationError) {
-    // 422: the API refused the message. error.responseBody has the reason
+    // 422: the API refused the message. error.message has the reason, error.errors the field detail
+  }
+  if (error instanceof LettermintRateLimitError) {
+    // 429: retry after error.retryAfter seconds, with the same idempotencyKey
   }
   if (error instanceof LettermintTimeoutError) {
-    // the request did not come back within `timeout`
+    // no answer within `timeout`. The API may still have accepted the message
   }
 }
 ```
 
-Available: `LettermintError` (the base class), `LettermintHttpRequestError`, `LettermintValidationError`, `LettermintClientError` and `LettermintTimeoutError`. The module adds `LettermintPayloadError`, thrown before anything goes on the wire when an option cannot be mapped onto the API (bad metadata, tags, attachment content, or `scheduledAt`).
+Every error the SDK raises extends `LettermintError`. The ones answering an HTTP error status extend `LettermintApiError`, which carries `status`, `code`, `message` and the response `body`:
+
+| Export | When |
+| --- | --- |
+| `LettermintApiError` | Any 4xx or 5xx answer from the API. The classes below extend it. |
+| `LettermintAuthenticationError` | 401: the configured token is wrong or revoked. |
+| `LettermintPermissionError` | 403 |
+| `LettermintNotFoundError` | 404 |
+| `LettermintConflictError` | 409, for example an `idempotencyKey` reused with a different message. |
+| `LettermintValidationError` | 422, with the field errors in `errors`. |
+| `LettermintRateLimitError` | 429, with `retryAfter` in seconds. |
+| `LettermintServerError` | 5xx |
+| `LettermintTimeoutError` | No complete answer within `timeout`. |
+| `LettermintConnectionError` | The API could not be reached (DNS, TLS, connection refused or reset). |
+| `LettermintUnexpectedResponseError` | An answer that is not JSON, such as a proxy's HTML error page. |
+| `LettermintRedirectError` | A redirect. The SDK never follows one, so tokens never go elsewhere. |
+| `LettermintConfigError` | The client is misconfigured, for example an invalid `baseUrl` or `timeout`. |
+
+The module adds `LettermintPayloadError`, thrown before anything goes on the wire when the message cannot be sent as given: bad metadata, tags, attachment content or `scheduledAt`, or an invalid `idempotencyKey`.
 
 Types come from the package rather than `#imports`, since Nuxt's server auto-imports carry values only:
 
@@ -317,9 +352,9 @@ Types come from the package rather than `#imports`, since Nuxt's server auto-imp
 import type { LettermintEmailOptions, MessageStatus } from 'nuxt-lettermint'
 ```
 
-Everything the module defines is exported there, including `LettermintFailure` (the return type of `toLettermintFailure()`), along with the SDK types its options and results use: `MessageStatus`, `TlsPolicy`, `SendEmailResponse` and `SendBatchEmailResponse`. For the rest of the SDK's generated types, add `lettermint` to your app's own dependencies.
+Everything the module defines is exported there, including `LettermintFailure` (the return type of `toLettermintFailure()`), along with the SDK types its options and results use: `MessageStatus`, `TlsPolicy`, `SendEmailResponse` and `SendBatchEmailResponse`. `SendEmailResponse` is a union on `status`: check `status === 'scheduled'` before reading `scheduled_at`. For the rest of the SDK's generated types, add `lettermint` (3.x) to your app's own dependencies.
 
-To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise:
+To answer a request with whatever went wrong, `toLettermintFailure()` turns an SDK error into a status and a message, and returns `null` for anything the SDK did not raise. An error status from the API keeps its status and message, with the response body as `data`. A timeout becomes a 504, an unreachable API or an answer that is not JSON a 502, and input the SDK refused a 400. A misconfigured client becomes a 500 with a generic message, so configuration detail stays on the server:
 
 ```typescript
 import { sendEmail, toLettermintFailure } from '#imports'
@@ -342,7 +377,7 @@ export default defineEventHandler(async (event) => {
 
 ### Advanced Usage
 
-`useLettermintEmail()` hands you an email builder for anything the helpers above don't cover. Take one per message: the builder holds the message it is composing, so a builder kept around and shared between requests would let them overwrite each other.
+`useLettermintEmail()` hands you the SDK's email builder for anything the helpers above don't cover. The builder is immutable: every setter returns a new builder and leaves the one you called it on unchanged, so a base builder can be shared, even between concurrent requests. When you build a message over several statements, keep what each setter returns.
 
 ```typescript
 import { useLettermintEmail, useLettermint } from '#imports'
@@ -353,10 +388,14 @@ await useLettermintEmail()
   .subject('Hello')
   .html('<h1>Hello</h1>')
   .tag('campaign')
-  .send()
+  .send({ idempotencyKey: 'hello-1' })
 
-// useLettermint() returns the SDK instance itself, for the rest of its surface
-await useLettermint().email.ping()
+let email = useLettermintEmail().from('sender@example.com').to(user.email).subject('Your invoice')
+if (user.accountant) email = email.cc(user.accountant)
+await email.html(invoiceHtml).send()
+
+// useLettermint() returns the SDK client itself, for the rest of its surface
+await useLettermint().emails.ping()
 ```
 
 ## Links

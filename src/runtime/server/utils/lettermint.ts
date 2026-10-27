@@ -1,5 +1,5 @@
-import { Lettermint } from 'lettermint'
-import type { ApiClient, EmailEndpoint, SendBatchMailRequest } from 'lettermint'
+import { Lettermint, LettermintValidationError as SdkValidationError } from 'lettermint'
+import type { EmailBuilder, EmailMessage, SendOptions } from 'lettermint'
 import { useRuntimeConfig } from '#imports'
 import { LettermintPayloadError } from './errors'
 import type { LettermintAttachment, LettermintEmailOptions, LettermintTag, SendBatchEmailResponse, SendEmailResponse } from '../../types'
@@ -9,56 +9,52 @@ export type { LettermintEmailOptions, LettermintSettings, LettermintTag } from '
 /** @deprecated Use LettermintEmailOptions. */
 export type SendEmailOptions = LettermintEmailOptions
 
-type BatchMessage = SendBatchMailRequest[number]
+const API_KEY_MISSING = 'Lettermint API key is not configured. Please set NUXT_LETTERMINT_API_KEY environment variable or configure it in nuxt.config.ts'
+const API_TOKEN_MISSING = 'Lettermint API token is not configured. The team API uses a different token than sending: create one in your team settings and set NUXT_LETTERMINT_API_TOKEN, or configure `lettermint.apiToken` in nuxt.config.ts'
 
-function getApiKey(): string {
-  const config = useRuntimeConfig()
+/**
+ * A client with every credential that is configured: the sending key for
+ * `emails.*`, the team token for the rest. `requires` names the one the caller
+ * cannot do without, so a missing credential fails with the module's own
+ * message instead of the SDK's.
+ *
+ * The SDK client holds no message state, so sharing one would be safe; it is
+ * still built per call so that it always reflects the current runtime config.
+ */
+function createClient(requires: 'apiKey' | 'apiToken'): Lettermint {
+  const config = useRuntimeConfig().lettermint
+  // SDK 3 refuses a token with surrounding whitespace, such as the trailing
+  // newline of an env file, where fetch used to strip it from the header.
+  const tokens = { apiKey: config?.apiKey?.trim(), apiToken: config?.apiToken?.trim() }
 
-  if (!config.lettermint?.apiKey) {
-    throw new Error('Lettermint API key is not configured. Please set NUXT_LETTERMINT_API_KEY environment variable or configure it in nuxt.config.ts')
+  if (!tokens[requires]) {
+    throw new Error(requires === 'apiKey' ? API_KEY_MISSING : API_TOKEN_MISSING)
   }
 
-  return config.lettermint.apiKey
-}
-
-function getClientConfig(): { baseUrl?: string, timeout?: number } {
-  const config = useRuntimeConfig()
-
-  return {
-    ...config.lettermint?.baseUrl && { baseUrl: config.lettermint.baseUrl },
-    ...config.lettermint?.timeout && { timeout: config.lettermint.timeout },
-  }
-}
-
-function getApiToken(): string {
-  const config = useRuntimeConfig()
-
-  if (!config.lettermint?.apiToken) {
-    throw new Error('Lettermint API token is not configured. The team API uses a different token than sending: create one in your team settings and set NUXT_LETTERMINT_API_TOKEN, or configure `lettermint.apiToken` in nuxt.config.ts')
-  }
-
-  return config.lettermint.apiToken
-}
-
-// A new instance per call: the builder holds the message being composed, so a
-// shared one would let concurrent requests overwrite each other.
-export function useLettermint(): Lettermint {
   return new Lettermint({
-    ...getClientConfig(),
-    apiToken: getApiKey(),
+    ...tokens.apiKey && { sendingToken: tokens.apiKey },
+    ...tokens.apiToken && { teamToken: tokens.apiToken },
+    ...config.baseUrl && { baseUrl: config.baseUrl },
+    ...config.timeout && { timeout: config.timeout },
   })
 }
 
-export function useLettermintEmail(): EmailEndpoint {
-  return createEmail()
+/** The SDK client. Needs the sending key; the team API also works when a team token is configured. */
+export function useLettermint(): Lettermint {
+  return createClient('apiKey')
 }
 
-export function useLettermintApi(): ApiClient {
-  return Lettermint.api(getApiToken(), getClientConfig())
+/**
+ * A new email builder. The builder is immutable: every setter returns a new
+ * builder, so keep the value it returns.
+ */
+export function useLettermintEmail(): EmailBuilder {
+  return createClient('apiKey').emails.compose()
 }
 
-function createEmail(): EmailEndpoint {
-  return Lettermint.email(getApiKey(), getClientConfig())
+/** The SDK client for the team API. Needs the team token; sending also works when a sending key is configured. */
+export function useLettermintApi(): Lettermint {
+  return createClient('apiToken')
 }
 
 function toArray(value: string | string[]): string[] {
@@ -123,12 +119,12 @@ function toScheduledAt(value: string | Date): string {
   return date.toISOString()
 }
 
-function toPayload(options: LettermintEmailOptions): BatchMessage {
+function toPayload(options: LettermintEmailOptions): EmailMessage {
   if (!options.text && !options.html) {
     throw new LettermintPayloadError('Either text or html content is required')
   }
 
-  const payload: BatchMessage = {
+  const payload: EmailMessage = {
     from: options.from,
     to: toArray(options.to),
     subject: options.subject,
@@ -167,33 +163,31 @@ function toPayload(options: LettermintEmailOptions): BatchMessage {
   return payload
 }
 
+// The SDK checks what it can before a request (tag format, the idempotency
+// key), and rejects with its own validation error. That is the same refusal as
+// the module's own mapping, so it surfaces as one.
+async function refusingBadInput<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request()
+  }
+  catch (error) {
+    if (error instanceof SdkValidationError) {
+      throw new LettermintPayloadError(error.field ? `${error.field}: ${error.message}` : error.message, { cause: error })
+    }
+
+    throw error
+  }
+}
+
+function sendOptions(idempotencyKey: string | undefined): SendOptions | undefined {
+  return idempotencyKey ? { idempotencyKey } : undefined
+}
+
 export async function sendEmail(options: LettermintEmailOptions): Promise<SendEmailResponse> {
   const payload = toPayload(options)
+  const { emails } = createClient('apiKey')
 
-  let email = createEmail()
-    .from(payload.from)
-    .to(...payload.to)
-    .subject(payload.subject)
-
-  if (payload.text) email = email.text(payload.text)
-  if (payload.html) email = email.html(payload.html)
-  if (payload.cc) email = email.cc(...payload.cc)
-  if (payload.bcc) email = email.bcc(...payload.bcc)
-  if (payload.reply_to) email = email.replyTo(...payload.reply_to)
-  if (payload.headers) email = email.headers(payload.headers)
-  if (payload.metadata) email = email.metadata(payload.metadata)
-  if (payload.tag) email = email.tag(payload.tag)
-  if (payload.tags) email = email.tags(payload.tags)
-  if (payload.settings) email = email.settings(payload.settings)
-  if (payload.route) email = email.route(payload.route)
-  if (payload.scheduled_at) email = email.scheduledAt(payload.scheduled_at)
-  if (options.idempotencyKey) email = email.idempotencyKey(options.idempotencyKey)
-
-  payload.attachments?.forEach((attachment) => {
-    email = email.attach(attachment.filename, attachment.content, attachment.content_id ?? undefined, attachment.content_type ?? undefined)
-  })
-
-  return await email.send()
+  return await refusingBadInput(() => emails.send(payload, sendOptions(options.idempotencyKey)))
 }
 
 export async function sendEmails(
@@ -205,11 +199,8 @@ export async function sendEmails(
     throw new LettermintPayloadError(`Message ${keyed} carries an idempotencyKey, but the API applies idempotency to the batch as a whole. Pass it as sendEmails(messages, { idempotencyKey }).`)
   }
 
-  let email = createEmail()
+  const payloads = messages.map(toPayload)
+  const { emails } = createClient('apiKey')
 
-  if (options.idempotencyKey) {
-    email = email.idempotencyKey(options.idempotencyKey)
-  }
-
-  return await email.sendBatch(messages.map(toPayload))
+  return await refusingBadInput(() => emails.sendBatch(payloads, sendOptions(options.idempotencyKey)))
 }

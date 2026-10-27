@@ -1,3 +1,120 @@
+# Upgrade to v3
+
+v3 moves the module onto v3 of the [Lettermint Node.js SDK](https://github.com/lettermint/lettermint-node). SDK 2.x no longer receives updates, including fixes.
+
+The module's own surface has not changed: the `lettermint` config block and its environment variables (`NUXT_LETTERMINT_API_KEY` and so on), the client-side `useLettermint()` composable, `sendEmail()`, `sendEmails()`, the request and response of `/api/lettermint/send`, `toLettermintFailure()` and `LettermintPayloadError`. Projects that only use those can upgrade without touching their code, apart from the TypeScript note on `SendEmailResponse` below.
+
+It is a major version because three helpers hand out SDK objects as they are, and those changed with the SDK: `useLettermint()` and `useLettermintApi()` on the server, and `useLettermintEmail()`. So did the SDK's error classes, which the module re-exports.
+
+## The SDK client: `useLettermint()` and `useLettermintApi()`
+
+Both return the SDK 3 client. Sending moved from `email` to `emails`:
+
+```ts
+// v2
+await useLettermint().email.from('hello@acme.com').to('user@acme.com').subject('Hello').text('Hi').send()
+
+// v3: a builder per message...
+await useLettermint().emails.compose().from('hello@acme.com').to('user@acme.com').subject('Hello').text('Hi').send()
+
+// ...or the message as a plain object, in the API's field names
+await useLettermint().emails.send({ from: 'hello@acme.com', to: ['user@acme.com'], subject: 'Hello', text: 'Hi' })
+```
+
+The client now carries every credential you configured, and each part uses its own: `emails.*` the sending key, the team API the team token. Neither falls back to the other. `useLettermint()` still requires the sending key and `useLettermintApi()` the team token; the difference is that the client from `useLettermint()` can now reach the team API too when `apiToken` is set, and the one from `useLettermintApi()` can send when `apiKey` is set.
+
+The team API takes typed query objects instead of bracketed strings, and some methods moved:
+
+```ts
+// v2
+await api.domains.list({ 'page[size]': '10', 'filter[status]': 'verified' })
+await api.projects.routes(projectId)
+await api.team.members()
+
+// v3
+await api.domains.list({ page: { size: 10 }, filter: { status: 'verified' } })
+await api.routes.list(projectId)
+await api.team.members.list()
+```
+
+Message and event lists are flat pages: read `page.next_cursor` instead of `page.meta.next_cursor`, or let `iterate()` follow the pages. The SDK's [upgrade guide](https://github.com/lettermint/lettermint-node/blob/main/UPGRADE.md#team-api) maps every method. The type is `Lettermint` (from `lettermint`) where it was `ApiClient`.
+
+## The email builder: `useLettermintEmail()`
+
+The builder is now immutable. Every setter returns a new builder and leaves the one you called it on unchanged. A chain works as before; a message built over several statements has to keep what each setter returns, or the setters are lost:
+
+```ts
+// v2
+const email = useLettermintEmail().from('hello@acme.com').to(user.email).subject('Your invoice')
+if (user.accountant) email.cc(user.accountant)
+await email.html(invoiceHtml).send()
+
+// v3
+let email = useLettermintEmail().from('hello@acme.com').to(user.email).subject('Your invoice')
+if (user.accountant) email = email.cc(user.accountant)
+await email.html(invoiceHtml).send()
+```
+
+The idempotency key moved to `send()`, and attachments take an object. `content` may now be a `Buffer` as it is:
+
+| v2 | v3 |
+| --- | --- |
+| `.idempotencyKey(key).send()` | `.send({ idempotencyKey: key })` |
+| `.attach(filename, base64, contentId, contentType)` | `.attach({ filename, content, contentType, contentId })` |
+| `.sendBatch(messages)` | `sendEmails(messages)`, or `useLettermint().emails.sendBatch(messages)` |
+| `.ping()` | `useLettermint().emails.ping()` |
+
+The type is `EmailBuilder` where it was `EmailEndpoint`. In exchange, a base builder can be shared safely, even between concurrent requests.
+
+## Errors
+
+The SDK replaced its error classes, and the re-exports follow:
+
+| v2 | v3 |
+| --- | --- |
+| `LettermintError` | `LettermintError`, still the base of every SDK error |
+| `LettermintValidationError` (422) | `LettermintValidationError`, still 422, with field errors in `errors` |
+| `LettermintTimeoutError` | `LettermintTimeoutError` |
+| `LettermintHttpRequestError` | `LettermintApiError`. The old name still works as an alias, but is deprecated. |
+| `LettermintClientError` (400) | Removed. A 400 is a `LettermintApiError` with `status` 400. |
+
+New: `LettermintAuthenticationError` (401), `LettermintPermissionError` (403), `LettermintNotFoundError` (404), `LettermintConflictError` (409), `LettermintRateLimitError` (429, with `retryAfter`), `LettermintServerError` (5xx), `LettermintConnectionError`, `LettermintUnexpectedResponseError`, `LettermintRedirectError` and `LettermintConfigError`. The README lists when each one is thrown.
+
+The properties were renamed: `statusCode` is `status`, `responseBody` is `body`, and `errorType` is `code`. `error.name` is now readable (`ValidationError`, not a minified `d`).
+
+The SDK has a class of its own called `LettermintValidationError`, for input it refuses before sending (such as malformed tags). That is not the module's `LettermintValidationError`, which stays the 422. `sendEmail()` and `sendEmails()` turn the SDK's into a `LettermintPayloadError`, like the module's own input checks.
+
+### What the endpoint and `toLettermintFailure()` answer
+
+Nearly everything answers as before. The differences:
+
+- Tags the SDK refuses (a name with spaces, a duplicate name, more than 20) answer **400** with the reason. In v2 the SDK refused them with a plain `TypeError`, which the endpoint answered as a 500.
+- A timeout still answers 504, but the message now reads `The request to the Lettermint API timed out after 30000 ms.` instead of `Request timeout after 30000ms`.
+- A misconfigured client (an invalid `baseUrl`, say) answers a generic 500 and logs the reason, as any other server-side failure did.
+- `toLettermintFailure()` now covers failures the SDK used to leave to the runtime: an unreachable API is a 502 (`data.cause` has the reason), an answer that is not JSON is a 502, input the SDK refused is a 400, and a misconfigured client is a 500 with a generic message. v2 returned `null` for those. It no longer recognises errors thrown by SDK 2.x.
+
+## TypeScript
+
+`SendEmailResponse` is the SDK's `SendMailResponse`, a union on `status` (`'pending'` or `'scheduled'`). `scheduled_at` exists only on the scheduled side, so narrow first:
+
+```ts
+const result = await sendEmail(message)
+
+if (result.status === 'scheduled') {
+  console.log(result.scheduled_at)
+}
+```
+
+`MessageStatus` and `TlsPolicy` are open: they accept values the API adds later, so a `switch` over them needs a `default` branch.
+
+## If you use the SDK directly
+
+The module now depends on `lettermint@^3`. If your app also has `lettermint` in its own `package.json`, upgrade it in the same step and follow the SDK's [upgrade guide](https://github.com/lettermint/lettermint-node/blob/main/UPGRADE.md). SDK 3 runs on Node.js 20 or later; the module already requires 22.19 or later.
+
+The module does not verify webhooks. If your app does, with the SDK's `Webhook` class: `verify()` is now `async` and takes the raw body first, `await new Webhook(secret).verify(rawBody, headers)`, and both the `X-Lettermint-Signature` and `X-Lettermint-Delivery` headers are required. In a Nitro route, read the body with `readRawBody(event)` and pass `getHeaders(event)`.
+
+The environment variable names stay the module's own: `NUXT_LETTERMINT_API_KEY` for the project sending token (the SDK's documentation calls it `LETTERMINT_PROJECT_TOKEN`) and `NUXT_LETTERMINT_API_TOKEN` for the team token.
+
 # Upgrade to v2
 
 v2 moves the module onto v2 of the [Lettermint Node.js SDK](https://github.com/lettermint/lettermint-node), and takes the chance to close a hole in the defaults.

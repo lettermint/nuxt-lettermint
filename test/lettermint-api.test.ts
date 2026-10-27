@@ -41,12 +41,9 @@ beforeEach(() => {
       ...init.body !== undefined && { body: JSON.parse(String(init.body)) },
     })
 
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ data: [] }),
-      text: async () => 'pong\n',
-    }
+    // Nothing in this file reaches the network.
+    const body = String(url).endsWith('/ping') ? 'pong\n' : JSON.stringify({ data: [], next_cursor: null })
+    return new Response(body, { status: 200 })
   }))
 })
 
@@ -65,8 +62,9 @@ describe('useLettermintApi', () => {
   it('exposes the documented endpoint groups', async () => {
     const api = await useApi()
 
-    expect(Object.keys(api).filter(key => key !== 'client').sort()).toEqual([
+    expect(Object.keys(api).sort()).toEqual([
       'domains',
+      'emails',
       'messages',
       'projects',
       'routes',
@@ -82,6 +80,12 @@ describe('useLettermintApi', () => {
 
     expect(requests[0]!.method).toBe('GET')
     expect(requests[0]!.url).toBe('https://api.lettermint.co/v1/domains')
+  })
+
+  it('sends typed query objects in the API\'s bracket syntax', async () => {
+    await (await useApi()).domains.list({ page: { size: 10 }, filter: { status: 'verified' } })
+
+    expect(requests[0]!.url).toBe('https://api.lettermint.co/v1/domains?page%5Bsize%5D=10&filter%5Bstatus%5D=verified')
   })
 
   it('writes to collections', async () => {
@@ -115,6 +119,14 @@ describe('useLettermintApi', () => {
     runtimeConfig.apiToken = ''
 
     await expect(useApi()).rejects.toThrow('NUXT_LETTERMINT_API_TOKEN')
+  })
+
+  it('never falls back to the sending key for the team API', async () => {
+    runtimeConfig.apiToken = ''
+    const { useLettermint } = await import('../src/runtime/server/utils/lettermint')
+
+    await expect(useLettermint().team.retrieve()).rejects.toThrow('team.retrieve needs `teamToken`')
+    expect(requests).toHaveLength(0)
   })
 
   it('reads the configuration on every call instead of caching it', async () => {
