@@ -63,7 +63,7 @@
   "dependencies": {
     "@nuxt/kit": "^4.4.2",
     "defu": "^6.1.4",
-    "h3": "^1.15.11",
+    "h3": "^2.0.8",
     "lettermint": "^3.0.0"
   },
   "devDependencies": {
