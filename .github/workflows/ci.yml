@@ -55,3 +55,15 @@ jobs:
 
       - name: Test
         run: npm run test
+
+  # The one check branch protection requires. It fails when a job above failed or
+  # was cancelled; skipped jobs count as passed.
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [lint, test]
+    runs-on: ubuntu-slim
+    steps:
+      - name: Fail when a job failed or was cancelled
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
